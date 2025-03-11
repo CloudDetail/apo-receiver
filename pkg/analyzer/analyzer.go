@@ -161,14 +161,16 @@ func (analyzer *ReportAnalyzer) Consume(traceId string) {
 		// Do not build Relation.
 		return
 	}
+
+	ignoreRetry := traces.Traces[0].Labels.ApmType == "cw"
 	if traces.HasSlow {
-		analyzer.taskPool.addTask(newSlowTraceTask(traces))
+		analyzer.taskPool.addTask(newSlowTraceTask(traces, ignoreRetry))
 	}
 	if traces.HasError {
-		analyzer.taskPool.addTask(newErrorTraceTask(traces))
+		analyzer.taskPool.addTask(newErrorTraceTask(traces, ignoreRetry))
 	}
 	if !traces.HasSlow && !traces.HasError && traces.UnSentTraceCount > 0 {
-		analyzer.taskPool.addTask(newNormalTraceTask(traces))
+		analyzer.taskPool.addTask(newNormalTraceTask(traces, ignoreRetry))
 	}
 }
 
@@ -212,7 +214,7 @@ func mergeTraces(oldTraces *model.Traces, newTraces *model.Traces) {
 }
 
 func (analyzer *ReportAnalyzer) getWaitTime(apmType string) int64 {
-	if apmType == "nbs3" {
+	if apmType == "nbs3" || apmType == "cw" {
 		// Trace will send every 60 seconds.
 		// It's uncertain which second will be collected, we will wait it for 60 seconds.
 		return 60
@@ -246,7 +248,7 @@ func (analyzer *ReportAnalyzer) processTask(task *traceTask) {
 	retry, err := analyzer.buildReport(task.traces, task.reportType)
 	if err != nil {
 		if retry {
-			if task.retryTimes < analyzer.retryTimes {
+			if !task.ignoreRetry && task.retryTimes < analyzer.retryTimes {
 				analyzer.taskPool.retryTask(task)
 			} else {
 				recordDropReport(task.traces, err, task.reportType)
@@ -300,7 +302,7 @@ func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.
 	entryTrace := traces.RootTrace
 	apmType := entryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace.Labels.StartTime/1e6)
+		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -319,7 +321,7 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	queryTrace := traces.GetQueryTrace()
 	apmType := queryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace.Labels.StartTime/1e6)
+		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -457,7 +459,7 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	apmType := entryTrace.ApmType
 	var err error
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace.StartTime/1e6)
+		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -476,7 +478,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 	queryTrace := traces.GetQueryTrace().Labels
 	apmType := queryTrace.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace.StartTime/1e6)
+		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -588,7 +590,7 @@ func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmode
 		}
 	}
 
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels.StartTime/1e6)
+	serviceNodes, err := global.TRACE_CLIENT.QueryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -764,32 +766,36 @@ func (pool *taskPool) getToProcessTasks(checkTime int64) []*traceTask {
 }
 
 type traceTask struct {
-	traces     *model.Traces
-	reportType report.ReportType
-	retryTimes int
-	checkTime  int64
+	traces      *model.Traces
+	reportType  report.ReportType
+	retryTimes  int
+	checkTime   int64
+	ignoreRetry bool
 }
 
-func newSlowTraceTask(traces *model.Traces) *traceTask {
+func newSlowTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
-		traces:     traces,
-		reportType: report.SlowReportType,
-		retryTimes: 0,
+		traces:      traces,
+		reportType:  report.SlowReportType,
+		retryTimes:  0,
+		ignoreRetry: ignoreRetry,
 	}
 }
 
-func newErrorTraceTask(traces *model.Traces) *traceTask {
+func newErrorTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
-		traces:     traces,
-		reportType: report.ErrorReportType,
-		retryTimes: 0,
+		traces:      traces,
+		reportType:  report.ErrorReportType,
+		retryTimes:  0,
+		ignoreRetry: ignoreRetry,
 	}
 }
 
-func newNormalTraceTask(traces *model.Traces) *traceTask {
+func newNormalTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
-		traces:     traces,
-		reportType: report.NormalReportType,
-		retryTimes: 0,
+		traces:      traces,
+		reportType:  report.NormalReportType,
+		retryTimes:  0,
+		ignoreRetry: ignoreRetry,
 	}
 }

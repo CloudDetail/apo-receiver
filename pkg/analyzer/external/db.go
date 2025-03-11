@@ -32,7 +32,7 @@ func (db *dbParser) Parse(span *model.OtelSpan) *External {
 	if name == "" {
 		dbName := span.Attributes[model.AttributeDBName]
 		tableName := span.Attributes[model.AttributeDBSQLTable]
-		if tableName != "" && operationName != "" {
+		if operationName != "" {
 			if dbName != "" {
 				// SELECT <db>.<table>
 				name = fmt.Sprintf("%s %s.%s", operationName, dbName, tableName)
