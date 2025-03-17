@@ -37,6 +37,15 @@ var (
 			"name", "system", "role", "address", "is_error", "source",
 		},
 	}
+
+	MetricAdapterApmTraceCount = &MetricDef{
+		Name: "originx_sr_adapter_apmtrace_count",
+		Help: "A counter of the apmtrace connectivity",
+		Type: MetricCounter,
+		Keys: []string{
+			"node_name", "node_ip", "pid", "container_id", "is_hit",
+		},
+	}
 )
 
 const (

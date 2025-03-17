@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/componment/profile"
 	"github.com/CloudDetail/apo-receiver/pkg/config"
 	"github.com/CloudDetail/apo-receiver/pkg/global"
+	"github.com/CloudDetail/apo-receiver/pkg/metrics"
+	metricModel "github.com/CloudDetail/apo-receiver/pkg/metrics/model"
 
 	apmclient "github.com/CloudDetail/apo-module/apm/client/v1"
 	apmmodel "github.com/CloudDetail/apo-module/apm/model/v1"
@@ -302,7 +305,7 @@ func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.
 	entryTrace := traces.RootTrace
 	apmType := entryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -321,7 +324,7 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	queryTrace := traces.GetQueryTrace()
 	apmType := queryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -459,7 +462,7 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	apmType := entryTrace.ApmType
 	var err error
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, entryTrace)
+		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -478,7 +481,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 	queryTrace := traces.GetQueryTrace().Labels
 	apmType := queryTrace.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = global.TRACE_CLIENT.QueryServices(apmType, traces.TraceId, queryTrace)
+		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -590,7 +593,7 @@ func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmode
 		}
 	}
 
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
+	serviceNodes, err := analyzer.queryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -688,6 +691,20 @@ func (analyzer *ReportAnalyzer) checkTask() {
 			return
 		}
 	}
+}
+
+func (analyzer *ReportAnalyzer) queryServices(apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
+	serviceNodes, err := global.TRACE_CLIENT.QueryServices(apmType, traceId, rootTrace)
+	// Record Metric
+	metrics.UpdateMetric(metricModel.MetricAdapterApmTraceCount, []string{
+		rootTrace.NodeName,
+		rootTrace.NodeIp,
+		strconv.FormatUint(uint64(rootTrace.Pid), 10),
+		rootTrace.ContainerId,
+		strconv.FormatBool(err == nil),
+	}, float64(1))
+
+	return serviceNodes, err
 }
 
 type traceApmType struct {
