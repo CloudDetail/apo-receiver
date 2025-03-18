@@ -35,9 +35,9 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/model"
 
 	"github.com/CloudDetail/apo-module/apm/client/v1"
-	"github.com/CloudDetail/metadata/source"
 	sloconfig "github.com/CloudDetail/apo-module/slo/sdk/v1/config"
 	slomanager "github.com/CloudDetail/apo-module/slo/sdk/v1/manager"
+	"github.com/CloudDetail/metadata/source"
 )
 
 func Run(ctx context.Context) error {
@@ -113,7 +113,12 @@ func Run(ctx context.Context) error {
 		httpserver.StartHttpServer(receiverCfg.HttpPort, prometheusCfg.OpenApiMetrics)
 	}()
 	if prometheusCfg.SendApi != "" && prometheusCfg.SendInterval > 0 {
-		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", prometheusCfg.Address, prometheusCfg.SendApi), prometheusCfg.SendInterval, prometheusCfg.Storage); err != nil {
+		promSendAddress := prometheusCfg.SendAddress
+		if promSendAddress == "" {
+			// fix for earlier version.
+			promSendAddress = prometheusCfg.Address
+		}
+		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, prometheusCfg.Storage); err != nil {
 			return err
 		}
 	}

@@ -11,11 +11,12 @@ profile:
   window_sample_num: 10
 
 promethues:
-  address: http://localhost:8428
+  address: http://apo-victoria-metrics-single-server-svc:8428
   # vm(VictoriaMetrics) or prom(Promethues)
   storage: "vm"
   # Number of different labels in a histogram. Clean them when it exceeds the limit.
   cache_size: 5000
+  send_address: "http://apo-otel-collector-gateway-svc:19291"
   # Send API
   # VM - /api/v1/import/prometheus
   # Prom - /api/v1/write

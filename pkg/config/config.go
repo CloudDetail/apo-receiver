@@ -42,6 +42,7 @@ type PrometheusConfig struct {
 	Storage                 string          `mapstructure:"storage"`
 	CacheSize               int             `mapstructure:"cache_size"`
 	LatencyHistogramBuckets []time.Duration `mapstructure:"latency_histogram_buckets"`
+	SendAddress             string          `mapstructure:"send_address"`
 	SendApi                 string          `mapstructure:"send_api"`
 	SendInterval            int             `mapstructure:"send_interval"`
 	GenerateClientMetric    bool            `mapstructure:"generate_client_metric"`
