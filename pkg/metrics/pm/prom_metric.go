@@ -44,3 +44,34 @@ func newPromTimeSeriesWithAdditional(ts int64, metric PromMetric, suffix string,
 		},
 	}
 }
+
+func NewPromTimeSeriesWithVm(ts int64, metricName string, suffix string, labels []string, values []string, additionalLabelName string, additionalLabelValue string, value float64) *pb.TimeSeries {
+	metricLabels := make([]*pb.Label, 0)
+	// Add metric-specific labels
+	metricLabels = append(metricLabels, &pb.Label{
+		Name:  "__name__",
+		Value: metricName + suffix,
+	})
+	for i, label := range labels {
+		metricLabels = append(metricLabels, &pb.Label{
+			Name:  label,
+			Value: values[i],
+		})
+	}
+	if additionalLabelName != "" {
+		metricLabels = append(metricLabels, &pb.Label{
+			Name:  additionalLabelName,
+			Value: additionalLabelValue,
+		})
+	}
+
+	return &pb.TimeSeries{
+		Labels: metricLabels,
+		Samples: []*pb.Sample{
+			{
+				Value:     value,
+				Timestamp: ts,
+			},
+		},
+	}
+}

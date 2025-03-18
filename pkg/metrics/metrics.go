@@ -96,7 +96,7 @@ func UpdateMetric(metricDef *model.MetricDef, labelValues []string, value float6
 	if !ok {
 		if metricDef.Type == model.MetricHistogram {
 			if metricConfig.storageType == StorageVm {
-				metric = vm.NewVmHistogram()
+				metric = vm.NewVmHistogram(metricDef.Name, metricDef.Keys, labelValues)
 			} else {
 				metric = pm.NewPromHistogram(metricDef, labelValues, metricConfig.buckets)
 			}

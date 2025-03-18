@@ -118,7 +118,12 @@ func Run(ctx context.Context) error {
 			// fix for earlier version.
 			promSendAddress = prometheusCfg.Address
 		}
-		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, prometheusCfg.Storage); err != nil {
+		promRemoteWriteType := prometheusCfg.RemoteWriteType
+		if promRemoteWriteType == "" {
+			// fix for earlier version.
+			promRemoteWriteType = prometheusCfg.Storage
+		}
+		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, promRemoteWriteType); err != nil {
 			return err
 		}
 	}

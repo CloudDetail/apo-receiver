@@ -6,6 +6,9 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	pb "github.com/CloudDetail/apo-receiver/internal/prometheus"
+	"github.com/CloudDetail/apo-receiver/pkg/metrics/pm"
 )
 
 const (
@@ -46,6 +49,10 @@ var bucketMultiplier = math.Pow(10, 1.0/bucketsPerDecimal)
 //
 // Zero histogram is usable.
 type VmHistogram struct {
+	metricName  string
+	labelKeys   []string
+	labelValues []string
+
 	// Mu gurantees synchronous update for all the counters and sum.
 	//
 	// Do not use sync.RWMutex, since it has zero sense from performance PoV.
@@ -184,8 +191,12 @@ func (h *VmHistogram) VisitNonZeroBuckets(f func(vmrange string, count uint64)) 
 //   - foo{bar="baz",aaa="b"}
 //
 // The returned histogram is safe to use from concurrent goroutines.
-func NewVmHistogram() *VmHistogram {
-	return &VmHistogram{}
+func NewVmHistogram(metricName string, labelKeys []string, labelValues []string) *VmHistogram {
+	return &VmHistogram{
+		metricName:  metricName,
+		labelKeys:   labelKeys,
+		labelValues: labelValues,
+	}
 }
 
 // UpdateDuration updates request duration based on the given startTime.
@@ -242,6 +253,22 @@ func (h *VmHistogram) MarshalTo(name string, labelKey string, w io.Writer) error
 			fmt.Fprintf(w, "%s_sum%s %g\n", name, labels, sum)
 		}
 		fmt.Fprintf(w, "%s_count%s %d\n", name, labels, countTotal)
+	}
+	return nil
+}
+
+func (h *VmHistogram) ExportTimeSeries(ts int64, series *[]*pb.TimeSeries) error {
+	countTotal := uint64(0)
+
+	h.VisitNonZeroBuckets(func(vmrange string, count uint64) {
+		// <metric_name>_bucket{<optional_tags>,vmrange="<start>...<end>"} <counter>
+		*series = append(*series, pm.NewPromTimeSeriesWithVm(ts, h.metricName, "_bucket", h.labelKeys, h.labelValues, "vmrange", vmrange, float64(count)))
+		countTotal += count
+	})
+	if countTotal > 0 {
+		sum := h.getSum()
+		*series = append(*series, pm.NewPromTimeSeriesWithVm(ts, h.metricName, "_sum", h.labelKeys, h.labelValues, "", "", float64(sum)))
+		*series = append(*series, pm.NewPromTimeSeriesWithVm(ts, h.metricName, "_count", h.labelKeys, h.labelValues, "", "", float64(countTotal)))
 	}
 	return nil
 }
