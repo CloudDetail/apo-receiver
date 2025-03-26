@@ -1,3 +1,13 @@
+-- 1.5.0
+ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `rounded_time` DateTime64(3);
+
+{{if .Cluster}}
+drop table workflow_records on CLUSTER {{.Cluster}};
+CREATE TABLE IF NOT EXISTS workflow_records
+    ON CLUSTER {{.Cluster}} AS {{.Database}}.workflow_records_local
+ENGINE = Distributed('{{.Cluster}}', '{{.Database}}', 'workflow_records_local', cityHash64(ref));
+{{end}}
+
 -- 1.3.0
 ALTER TABLE alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `alert_id` String CODEC(ZSTD(1));
 ALTER TABLE alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `raw_tags` Map(LowCardinality(String), String) CODEC(ZSTD(1));
@@ -8,5 +18,5 @@ ALTER TABLE alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} MODI
 drop table alert_event on CLUSTER {{.Cluster}};
 CREATE TABLE IF NOT EXISTS alert_event
     ON CLUSTER {{.Cluster}} AS {{.Database}}.alert_event_local
-ENGINE = Distributed('{{.Cluster}}', '{{.Database}}', 'alert_event_local', cityHash64(trace_id));
+ENGINE = Distributed('{{.Cluster}}', '{{.Database}}', 'alert_event_local', cityHash64(alert_id));
 {{end}}

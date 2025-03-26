@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS workflow_records{{if .Cluster}}_local ON CLUSTER {{.C
     `ref` String,
     `input` String,
     `output` String,
-    `created_at` DateTime64(3)
+    `created_at` DateTime64(3),
+    `rounded_time` DateTime64(3)
 ) ENGINE {{if .Replication}}ReplicatedMergeTree{{else}}MergeTree(){{end}}
 PARTITION BY toDate(created_at)
 ORDER BY (workflow_run_id,created_at)
