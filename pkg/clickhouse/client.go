@@ -90,6 +90,10 @@ func (client *ClickHouseClient) StoreRelation(relation *report.Relation) {
 	client.cache.cacheRelations(relation)
 }
 
+func (client *ClickHouseClient) StoreAgentEvent(agentEvent *model.AgentEvent) {
+	client.cache.cacheAgentEvent(agentEvent)
+}
+
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {
 	return tables.QueryTraces(ctx, client.Conn, traceId)
 }
@@ -139,6 +143,10 @@ func (client *ClickHouseClient) batchSendToServer() {
 			relations := client.cache.getToSendRelations()
 			if err := tables.WriteServiceRelationships(ctx, client.Conn, relations); err != nil {
 				log.Printf("[x Add ServiceRelationship] %s", err.Error())
+			}
+			agentEvents := client.cache.getToSendAgentEvents()
+			if err := tables.WriteAgentEvents(ctx, client.Conn, agentEvents); err != nil {
+				log.Printf("[x Add AgentEvent] %s", err.Error())
 			}
 			if client.exportServiceClient {
 				if err := tables.WriteServiceClients(ctx, client.Conn, relations); err != nil {

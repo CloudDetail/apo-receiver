@@ -4,11 +4,11 @@ go 1.21.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.26.0
-	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250310033028-3df9cd80157b
-	github.com/CloudDetail/apo-module/apm/model v0.0.0-20250117023909-15f015544de7
-	github.com/CloudDetail/apo-module/model v0.0.0-20250117023909-15f015544de7
-	github.com/CloudDetail/apo-module/slo/api v0.0.0-20250117023909-15f015544de7
-	github.com/CloudDetail/apo-module/slo/sdk v0.0.0-20250117023909-15f015544de7
+	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/slo/sdk v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/metadata v0.0.0-20241129101557-10d59745e7b7
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang/snappy v0.0.4

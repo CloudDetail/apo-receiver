@@ -62,6 +62,10 @@ func (server *TraceServer) StoreDataGroups(_ context.Context, dataGroups *grpc_m
 			}
 			global.CLICK_HOUSE.StoreTraceGroup(signal)
 		}
+	} else if dataGroups.Name == report.OriginxAgentEvent {
+		for _, data := range dataGroups.Datas {
+			server.analyzer.StoreEvent(data)
+		}
 	} else {
 		// Profile、Log
 		global.CLICK_HOUSE.BatchStore(dataGroups.Name, dataGroups.Datas)

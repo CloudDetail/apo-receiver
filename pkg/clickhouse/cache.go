@@ -22,6 +22,7 @@ type cache struct {
 	cameraErrorReports  []*report.ErrorReport
 	cameraReportMetrics []*profile_model.SlowReportCountMetric
 	relations           []*report.Relation
+	originxAgentEvents  []*model.AgentEvent
 }
 
 func newCache() *cache {
@@ -35,6 +36,7 @@ func newCache() *cache {
 		cameraErrorReports:  make([]*report.ErrorReport, 0),
 		cameraReportMetrics: make([]*profile_model.SlowReportCountMetric, 0),
 		relations:           make([]*report.Relation, 0),
+		originxAgentEvents:  make([]*model.AgentEvent, 0),
 	}
 }
 
@@ -89,6 +91,13 @@ func (c *cache) cacheRelations(relation *report.Relation) {
 	defer c.mutex.Unlock()
 
 	c.relations = append(c.relations, relation)
+}
+
+func (c *cache) cacheAgentEvent(agentEvent *model.AgentEvent) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.originxAgentEvents = append(c.originxAgentEvents, agentEvent)
 }
 
 func (c *cache) getToSendEventGroups() []string {
@@ -214,5 +223,19 @@ func (c *cache) getToSendRelations() []*report.Relation {
 
 	toSends := c.relations[0:size]
 	c.relations = c.relations[size:]
+	return toSends
+}
+
+func (c *cache) getToSendAgentEvents() []*model.AgentEvent {
+	size := len(c.originxAgentEvents)
+	if size == 0 {
+		return nil
+	}
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	toSends := c.originxAgentEvents[0:size]
+	c.originxAgentEvents = c.originxAgentEvents[size:]
 	return toSends
 }

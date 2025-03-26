@@ -92,6 +92,17 @@ func (analyzer *ReportAnalyzer) Stop() {
 	close(analyzer.stopChan)
 }
 
+func (analyzer *ReportAnalyzer) StoreEvent(eventJson string) {
+	agentEvent := &model.AgentEvent{}
+	if err := json.Unmarshal([]byte(eventJson), agentEvent); err != nil {
+		log.Printf("[x Parse Agent Event] Error: %s", err.Error())
+		return
+	}
+	fillK8sMetadataInEvent(agentEvent)
+
+	global.CLICK_HOUSE.StoreAgentEvent(agentEvent)
+}
+
 func (analyzer *ReportAnalyzer) CacheMetric(metricJson string) {
 	onOffMetricGroup := &model.OnOffMetricGroup{}
 	if err := json.Unmarshal([]byte(metricJson), onOffMetricGroup); err != nil {

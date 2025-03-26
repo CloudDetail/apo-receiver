@@ -1,8 +1,8 @@
 package analyzer
 
 import (
-	"github.com/CloudDetail/metadata/model/cache"
 	"github.com/CloudDetail/apo-module/model/v1"
+	"github.com/CloudDetail/metadata/model/cache"
 )
 
 func fillK8sMetadataInSpanTrace(trace *model.Trace) bool {
@@ -20,4 +20,18 @@ func fillK8sMetadataInSpanTrace(trace *model.Trace) bool {
 		return true
 	}
 	return false
+}
+
+func fillK8sMetadataInEvent(event *model.AgentEvent) {
+	if containerId, ok := event.Labels["container_id"]; ok && len(containerId) > 0 {
+		if pod, find := cache.Querier.GetPodByContainerId("", containerId); find {
+			event.Labels["pod_name"] = pod.Name
+			event.Labels["namespace"] = pod.NS()
+			owners := pod.GetOwnerReferences(true)
+			if len(owners) > 0 {
+				event.Labels["workload_name"] = owners[0].Name
+				event.Labels["workload_kind"] = owners[0].Kind
+			}
+		}
+	}
 }

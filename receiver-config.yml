@@ -40,7 +40,7 @@ clickhouse:
   # (default = 0): The data time-to-live in days, 0 means no ttl.
   ttl_days: 7
   ttl_config:
-    - tables: ["service_relationship", "service_client"]
+    - tables: ["service_relationship", "service_client", "originx_agent_event"]
       ttl: 30
     - tables: ["alert_event"]
       ttl: 7

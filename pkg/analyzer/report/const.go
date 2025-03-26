@@ -10,6 +10,8 @@ const (
 	CameraErrorReport = "camera_error_report"
 
 	DesignatedProfilingSignal = "designated_profiling_signal"
+
+	OriginxAgentEvent = "originx_agent_event"
 )
 
 type ReportType int
