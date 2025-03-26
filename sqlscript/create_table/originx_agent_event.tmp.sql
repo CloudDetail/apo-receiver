@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS originx_agent_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}}
 (
-    timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
+    timestamp DateTime CODEC(Delta, ZSTD(1)),
     name String CODEC(ZSTD(1)),
     pid UInt32,
     labels Map(LowCardinality(String), String) CODEC(ZSTD(1)),
