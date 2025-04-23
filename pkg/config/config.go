@@ -21,6 +21,8 @@ type ReceiverConfig struct {
 	HttpPort        int    `mapstructure:"http_port"`
 	CenterApiServer string `mapstructure:"center_api_server"`
 	PortalAddress   string `mapstructure:"portal_address"`
+	ClusterId       string `mapstructure:"cluster_id"`
+	DingDingWH      string `mapstructure:"ding_ding_wh"`
 }
 
 type SampleConfig struct {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
 	"log"
 	"net"
 	"os"
@@ -104,7 +105,7 @@ func Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		startGrpcServer(receiverCfg, sampleCfg, profileCfg, analyzerCfg, threshold.CacheInstance)
+		startGrpcServer(receiverCfg, sampleCfg, profileCfg, analyzerCfg, threshold.CacheInstance, prometheusV1Api)
 	}()
 	// Start HTTP server
 	wg.Add(1)
@@ -173,7 +174,8 @@ func startGrpcServer(
 	sampleCfg *config.SampleConfig,
 	profileCfg *config.ProfileConfig,
 	analyzerCfg *config.AnalyzerConfig,
-	thresholdCache *threshold.ThresholdCache) {
+	thresholdCache *threshold.ThresholdCache,
+	promClient v1.API) {
 	listen, err := net.Listen("tcp", ":"+strconv.Itoa(receiverCfg.GrpcPort))
 	if err != nil {
 		log.Fatalf("Fail to listen Grpc Port: %v\n", err)
@@ -201,6 +203,9 @@ func startGrpcServer(
 
 	ebpfFileReceiver := ebpffile.NewEbpfFIleServer(receiverCfg.CenterApiServer, receiverCfg.PortalAddress)
 	model.RegisterFileServiceServer(server, ebpfFileReceiver)
+
+	agentMonitorReceiver := agentmonitor.NewAgentMonitorServer(receiverCfg.ClusterId, promClient, receiverCfg.DingDingWH)
+	model.RegisterAgentMonitorServiceServer(server, agentMonitorReceiver)
 
 	go func() {
 		c := make(chan os.Signal, 1)

@@ -3,6 +3,8 @@ receiver:
   http_port: 8080
   center_api_server: localhost:8080
   portal_address: http://portal-edge-svc:9600
+  cluster_id: developer
+  ding_ding_wh: xxxxx
 
 profile:
   # Cache Sampled TraceIds(second)
