@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/CloudDetail/apo-receiver/pkg/model"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	pm "github.com/prometheus/common/model"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/CloudDetail/apo-receiver/pkg/model"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	pm "github.com/prometheus/common/model"
 )
 
 type DingTalkMessage struct {
@@ -131,7 +132,7 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 		rssQuery,
 	)
 	if err != nil {
-		log.Fatalf("Error querying RSS: %v", err)
+		log.Printf("Error querying RSS: %v", err)
 	}
 	fmt.Printf("Latest RSS: %.2f MB (Time: %s)\n", rssValue/1024/1024, rssTime.Format(time.RFC3339))
 	cpuQuery := fmt.Sprintf(
@@ -145,6 +146,7 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 	fmt.Printf(cpuQuery)
 	if err != nil {
 		log.Fatalf("Error querying CPU: %v", err)
+		return nil, err
 	}
 	fmt.Printf("Latest CPU Usage: %.2f%% (Time: %s)\n", cpuValue, cpuTime.Format(time.RFC3339))
 	request.CpuUsage = uint64(cpuValue)
