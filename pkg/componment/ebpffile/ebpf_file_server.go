@@ -92,20 +92,7 @@ func getEbpfFileFromCenter(portalAddress string, centerServerAddr string, req *m
 
 func getCenterEbpfFile(portalAddress string, centerServerAddr string, req *model.FileRequest, version EbpfFetchAPI) Response {
 	var response Response
-	client := httphelper.CreateHttpClient(portalAddress != "", portalAddress)
-	var reqUrl string
-	if version == EBPF_FETCH_API_V1 {
-		reqUrl = fmt.Sprintf("http://%s/ebpffile/v1/download?agentVersion=%s&osDistribution=%s&arch=%s&kernelVersion=%s", centerServerAddr, req.AgentVersion, req.OsDistribution, req.Arch, req.KernelVersion)
-	} else {
-		reqUrl = fmt.Sprintf("http://%s/ebpffile/download?agentVersion=%s&osVersion=%s&kernelVersion=%s", centerServerAddr, req.AgentVersion, req.OsVersion, req.KernelVersion)
-	}
-
-	request, err := http.NewRequest("GET", reqUrl, nil)
-	if err != nil {
-		log.Printf("[get ebpfile]error happened when requesting /ebpfile: %v", err)
-		return response
-	}
-	resp, err := client.Do(request)
+	resp, err := queryEbpfFile(portalAddress, centerServerAddr, req, version)
 	if err != nil {
 		log.Printf("get ebpf dile from server[%s] error: %s", centerServerAddr, err)
 		return response
@@ -118,11 +105,26 @@ func getCenterEbpfFile(portalAddress string, centerServerAddr string, req *model
 		return response
 	}
 	if err = json.Unmarshal(body, &response); err != nil {
-		log.Printf("[get ebpf file] failed to decode SLOAlias Response error: %s Raw message: %s",
-			err, body)
+		log.Printf("[get ebpf file] failed to decode SLOAlias Response error: %v", err)
 		return response
 	}
 
 	return response
 
+}
+
+func queryEbpfFile(portalAddress string, centerServerAddr string, req *model.FileRequest, version EbpfFetchAPI) (*http.Response, error) {
+	client := httphelper.CreateHttpClient(portalAddress != "", portalAddress)
+	var reqUrl string
+	if version == EBPF_FETCH_API_V1 {
+		reqUrl = fmt.Sprintf("http://%s/ebpffile/v1/download?agentVersion=%s&osDistribution=%s&arch=%s&kernelVersion=%s", centerServerAddr, req.AgentVersion, req.OsDistribution, req.Arch, req.KernelVersion)
+	} else {
+		reqUrl = fmt.Sprintf("http://%s/ebpffile/download?agentVersion=%s&osVersion=%s&kernelVersion=%s", centerServerAddr, req.AgentVersion, req.OsVersion, req.KernelVersion)
+	}
+
+	httpReq, err := http.NewRequest("GET", reqUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(httpReq)
 }

@@ -143,7 +143,7 @@ func WriteSpanTraces(ctx context.Context, conn *sql.DB, toSends []*model.Trace) 
 }
 
 func QueryTraces(ctx context.Context, conn *sql.DB, traceId string) (*model.Traces, error) {
-	rows, err := conn.Query(fmt.Sprintf("SELECT * FROM span_trace WHERE trace_id='%s'", traceId))
+	rows, err := conn.Query("SELECT * FROM span_trace WHERE trace_id=?", traceId)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,8 @@ func QueryTraces(ctx context.Context, conn *sql.DB, traceId string) (*model.Trac
 			&spanTrace.StartTime,
 			&spanTrace.Duration,
 			&spanTrace.EndTime,
-			&spanTrace.OffsetTs); err != nil {
+			&spanTrace.OffsetTs,
+			&spanTrace.Metrics); err != nil {
 			return nil, err
 		}
 
@@ -276,4 +277,5 @@ type SpanTrace struct {
 	Duration          uint64            `db:"duration"`
 	EndTime           uint64            `db:"end_time"`
 	OffsetTs          int64             `db:"offset_ts"`
+	Metrics           map[string]uint64 `db:"metrics"`
 }
