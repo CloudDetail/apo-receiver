@@ -145,7 +145,7 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 	)
 	fmt.Printf(cpuQuery)
 	if err != nil {
-		log.Fatalf("Error querying CPU: %v", err)
+		log.Printf("Error querying CPU: %v", err)
 		return nil, err
 	}
 	fmt.Printf("Latest CPU Usage: %.2f%% (Time: %s)\n", cpuValue, cpuTime.Format(time.RFC3339))
