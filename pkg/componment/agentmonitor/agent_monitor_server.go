@@ -260,27 +260,42 @@ func (server *AgentMonitorServer) doStatistic() {
 
 		}
 	}
-
-	fmt.Printf("nowEvtNum - preEvtNum 大于 0 的 uid 个数: %d\n", validCountTmp)
-	fmt.Printf("这些 uid 的 EvtNum 总差值: %d\n", totalEvtDiff)
-	fmt.Printf("这些 uid 的 CpuEvtNum 总差值: %d\n", totalCpuEvtDiff)
-	fmt.Printf("这些 uid 的 TxEvtNum 总差值: %d\n", totalTxEvtDiff)
-	message := fmt.Sprintf("Agent 统计信息：\n"+
-		" - clusterId: %s\n"+
-		" - 正常运行探针个数: %d\n"+
-		" - 每分钟平均事件数量: %d\n"+
-		" - 每分钟平均Cpu事件数量: %d\n"+
-		" - 每分钟平均tx事件数量: %d\n"+
-		" - 平均cpu使用率: %d %%\n"+
-		" - 平均内存: %d mb\n",
-		server.clusterId,
-		validCountTmp,
-		totalEvtDiff/5,
-		totalCpuEvtDiff/5,
-		totalTxEvtDiff/5,
-		totalCpu/uint64(validCountTmp),
-		totalMem/uint64(validCountTmp),
-	)
+	message := ""
+	if validCountTmp == 0 {
+		message = fmt.Sprintf("Agent 统计信息：\n"+
+			" - clusterId: %s\n"+
+			" - 正常运行探针个数: %d\n"+
+			" - 每分钟平均事件数量: %d\n"+
+			" - 每分钟平均Cpu事件数量: %d\n"+
+			" - 每分钟平均tx事件数量: %d\n"+
+			" - 平均cpu使用率: %d %%\n"+
+			" - 平均内存: %d mb\n",
+			server.clusterId,
+			validCountTmp,
+			totalEvtDiff/5,
+			totalCpuEvtDiff/5,
+			totalTxEvtDiff/5,
+			0,
+			0,
+		)
+	} else {
+		message = fmt.Sprintf("Agent 统计信息：\n"+
+			" - clusterId: %s\n"+
+			" - 正常运行探针个数: %d\n"+
+			" - 每分钟平均事件数量: %d\n"+
+			" - 每分钟平均Cpu事件数量: %d\n"+
+			" - 每分钟平均tx事件数量: %d\n"+
+			" - 平均cpu使用率: %d %%\n"+
+			" - 平均内存: %d mb\n",
+			server.clusterId,
+			validCountTmp,
+			totalEvtDiff/5,
+			totalCpuEvtDiff/5,
+			totalTxEvtDiff/5,
+			totalCpu/uint64(validCountTmp),
+			totalMem/uint64(validCountTmp),
+		)
+	}
 	log.Println("message:", message)
 	// 发送消息
 	sendDingTalkMessage(webhookURL, message)
