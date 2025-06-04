@@ -7,13 +7,16 @@ import (
 )
 
 type Config struct {
-	ReceiverCfg   *ReceiverConfig
-	ProfileCfg    *ProfileConfig
-	PrometheusCfg *PrometheusConfig
-	ClickHouseCfg *ClickHouseConfig
-	AnalyzerCfg   *AnalyzerConfig
-	RedisCfg      *RedisConfig
-	K8sCfg        *K8sConfig
+	ReceiverCfg   ReceiverConfig   `mapstructure:"receiver"`
+	ProfileCfg    ProfileConfig    `mapstructure:"profile"`
+	PrometheusCfg PrometheusConfig `mapstructure:"prometheus"`
+	ClickHouseCfg ClickHouseConfig `mapstructure:"clickhouse"`
+	AnalyzerCfg   AnalyzerConfig   `mapstructure:"analyzer"`
+	RedisCfg      RedisConfig      `mapstructure:"redis"`
+	K8sCfg        K8sConfig        `mapstructure:"k8s"`
+	SampleConfig  SampleConfig     `mapstructure:"sample"`
+
+	TenancyCfg TenancyConfig `mapstructure:"tenancy"`
 }
 
 type ReceiverConfig struct {
@@ -121,4 +124,11 @@ type K8sConfig struct {
 	APIType string `mapstructure:"api_type"` // meta_server
 
 	MetaServerConfig *metaconfigs.MetaSourceConfig `mapstructure:"meta_server_config"`
+}
+
+type TenancyConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	Header    string `mapstructure:"header"`
+	Scheme    string `mapstructure:"scheme"`
+	PublicKey string `mapstructure:"public_key"`
 }

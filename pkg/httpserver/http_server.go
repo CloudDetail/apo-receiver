@@ -14,13 +14,18 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/componment/threshold"
 	"github.com/CloudDetail/apo-receiver/pkg/global"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 
 	slomodel "github.com/CloudDetail/apo-module/slo/api/v1/model"
 	sloconfig "github.com/CloudDetail/apo-module/slo/sdk/v1/config"
 )
 
-func StartHttpServer(port int, openMetricsApi bool) {
+func StartHttpServer(port int, openMetricsApi bool, authExtension *tenancy.AuthExtension) {
 	app := iris.Default()
+
+	if authExtension != nil {
+		app.Use(authExtension.AuthMiddleware())
+	}
 
 	if openMetricsApi {
 		app.Get("/metrics", getPromMetrics)
@@ -69,6 +74,7 @@ type SLOConfigRequest struct {
 
 func setSLOConfig(ctx iris.Context) {
 	var request SLOConfigRequest
+
 	err := ctx.ReadJSON(&request)
 	log.Printf("setSLOConfig: %v", request)
 	if err != nil {

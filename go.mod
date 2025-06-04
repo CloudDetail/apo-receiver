@@ -10,7 +10,9 @@ require (
 	github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/slo/sdk v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/metadata v0.0.0-20241129101557-10d59745e7b7
+	github.com/cespare/xxhash v1.1.0
 	github.com/go-redis/redis/v8 v8.11.5
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/kataras/iris/v12 v12.2.8
