@@ -1,26 +1,22 @@
 package threshold
 
 import (
-	"context"
-	"fmt"
-	"log"
 	"time"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	prometheus_model "github.com/prometheus/common/model"
 	"github.com/robfig/cron/v3"
 
-	"github.com/CloudDetail/apo-receiver/pkg/global"
-	grpc_model "github.com/CloudDetail/apo-receiver/pkg/model"
 	sloapi "github.com/CloudDetail/apo-module/slo/api/v1"
 	slomodel "github.com/CloudDetail/apo-module/slo/api/v1/model"
 	slochecker "github.com/CloudDetail/apo-module/slo/sdk/v1/checker"
+	grpc_model "github.com/CloudDetail/apo-receiver/pkg/model"
 )
 
 var CacheInstance *ThresholdCache
 var defaultLatencyMultiple = 1.1
 
 type ThresholdCache struct {
+	// not used now
 	promClient     v1.API
 	sloConfigCache sloapi.ConfigManager
 	// ContentKey -> SlowThresholdData
@@ -177,66 +173,68 @@ func GetSlowThresholdFromSLOs(uri string, configs []slomodel.SLOConfig) *grpc_mo
 	return slowThreshold
 }
 
-func (t *ThresholdCache) getYesterdayPercentile() map[string]*grpc_model.SlowThresholdData {
-	now := time.Now()
-	year, month, day := now.Date()
-	today := time.Date(year, month, day, 0, 0, 0, 0, time.Local)
-	result, err := queryMetric(t.promClient, today, 0.9, dayDuration)
-	if err != nil {
-		log.Printf("Failed to get yesterday percentile: %v", err)
-		return nil
-	}
-	return result
-}
+// TODO add accountID support
+// func (t *ThresholdCache) getYesterdayPercentile() map[string]*grpc_model.SlowThresholdData {
+// 	now := time.Now()
+// 	year, month, day := now.Date()
+// 	today := time.Date(year, month, day, 0, 0, 0, 0, time.Local)
+// 	result, err := queryMetric(t.promClient, today, 0.9, dayDuration)
+// 	if err != nil {
+// 		log.Printf("Failed to get yesterday percentile: %v", err)
+// 		return nil
+// 	}
+// 	return result
+// }
 
-func (t *ThresholdCache) getLastHourPercentile() map[string]*grpc_model.SlowThresholdData {
-	result, err := queryMetric(t.promClient, time.Now(), 0.9, hourDuration)
-	if err != nil {
-		log.Printf("Failed to get yesterday percentile: %v", err)
-		return nil
-	}
-	return result
-}
+// func (t *ThresholdCache) getLastHourPercentile() map[string]*grpc_model.SlowThresholdData {
+// 	result, err := queryMetric(t.promClient, time.Now(), 0.9, hourDuration)
+// 	if err != nil {
+// 		log.Printf("Failed to get yesterday percentile: %v", err)
+// 		return nil
+// 	}
+// 	return result
+// }
 
-func getContentKeyPercentileQuery(p9xValue float64, duration string) string {
-	return fmt.Sprintf("histogram_quantile(%f, sum by (content_key, %s) (rate(kindling_span_trace_duration_nanoseconds_bucket{}[%s])))",
-		p9xValue,
-		global.PROM_RANGE,
-		duration,
-	)
-}
+// func getContentKeyPercentileQuery(p9xValue float64, duration string) string {
+// 	return fmt.Sprintf("histogram_quantile(%f, sum by (content_key, %s) (rate(kindling_span_trace_duration_nanoseconds_bucket{}[%s])))",
+// 		p9xValue,
+// 		global.PROM_RANGE,
+// 		duration,
+// 	)
+// }
 
 const LabelContentKey = "content_key"
 
-func queryMetric(client v1.API, endTime time.Time, percentile float64, duration string) (map[string]*grpc_model.SlowThresholdData, error) {
-	query := getContentKeyPercentileQuery(percentile, duration)
+// TODO add accountID support
+// func queryMetric(client v1.API, endTime time.Time, percentile float64, duration string) (map[string]*grpc_model.SlowThresholdData, error) {
+// 	query := getContentKeyPercentileQuery(percentile, duration)
 
-	result, warnings, err := client.Query(context.Background(), query, endTime)
-	if err != nil {
-		return nil, err
-	}
-	if len(warnings) > 0 {
-		log.Printf("Request Prometheus Warning: %s", warnings)
-	}
-	thresholdType := ToThresholdType(percentile)
-	thresholdRange := ToThresholdRange(duration)
-	resultMap := make(map[string]*grpc_model.SlowThresholdData)
-	if vector, ok := result.(prometheus_model.Vector); ok {
-		for _, sample := range vector {
-			contentKey := string(sample.Metric[LabelContentKey])
-			if float64(sample.Value) > 0 {
-				resultMap[contentKey] = &grpc_model.SlowThresholdData{
-					Url:         contentKey,
-					ContainerId: "",
-					// Note the value is the product of the percentile and the default multiple 1.1
-					Value:       float64(sample.Value) * defaultLatencyMultiple,
-					Type:        string(thresholdType),
-					Range:       string(thresholdRange),
-					Multiple:    defaultLatencyMultiple,
-					ServiceName: "",
-				}
-			}
-		}
-	}
-	return resultMap, nil
-}
+// 	result, warnings, err := client.Query(context.Background(), query, endTime)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if len(warnings) > 0 {
+// 		log.Printf("Request Prometheus Warning: %s", warnings)
+// 	}
+// 	thresholdType := ToThresholdType(percentile)
+// 	thresholdRange := ToThresholdRange(duration)
+// 	resultMap := make(map[string]*grpc_model.SlowThresholdData)
+// 	if vector, ok := result.(prometheus_model.Vector); ok {
+// 		for _, sample := range vector {
+// 			contentKey := string(sample.Metric[LabelContentKey])
+// 			if float64(sample.Value) > 0 {
+// 				resultMap[contentKey] = &grpc_model.SlowThresholdData{
+// 					Url:         contentKey,
+// 					ContainerId: "",
+// 					// Note the value is the product of the percentile and the default multiple 1.1
+// 					Value:       float64(sample.Value) * defaultLatencyMultiple,
+// 					Type:        string(thresholdType),
+// 					Range:       string(thresholdRange),
+// 					Multiple:    defaultLatencyMultiple,
+// 					ServiceName: "",
+// 				}
+// 			}
+// 		}
+// 	}
+// 	return resultMap, nil
+// }

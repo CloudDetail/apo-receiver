@@ -9,7 +9,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
+
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 type VmPusher struct {
@@ -20,10 +23,10 @@ type VmPusher struct {
 	disableCompression bool
 
 	client           *http.Client
-	collectMetricsFn func(w io.Writer)
+	collectMetricsFn func(tenant tenancy.TenantInfo, w io.Writer)
 }
 
-func NewVmPusher(pushURL string, collectMetricsFn func(w io.Writer)) (*VmPusher, error) {
+func NewVmPusher(pushURL string, collectMetricsFn func(tenant tenancy.TenantInfo, w io.Writer)) (*VmPusher, error) {
 	// validate pushURL
 	pu, err := url.Parse(pushURL)
 	if err != nil {
@@ -52,11 +55,17 @@ func NewVmPusher(pushURL string, collectMetricsFn func(w io.Writer)) (*VmPusher,
 	}, nil
 }
 
-func (pc *VmPusher) SendMetrics(ctx context.Context) error {
+const (
+	// prometheusRemoteWrite
+	// https://<vminsert-addr>/insert/{TENANT_ID}/prometheus/api/v1/import/prometheus
+	TenantIDPlaceholder = "{TENANT_ID}"
+)
+
+func (pc *VmPusher) SendMetrics(ctx context.Context, tenant tenancy.TenantInfo) error {
 	bb := getBytesBuffer()
 	defer putBytesBuffer(bb)
 
-	pc.collectMetricsFn(bb)
+	pc.collectMetricsFn(tenant, bb)
 
 	if !pc.disableCompression {
 		bbTmp := getBytesBuffer()
@@ -75,7 +84,14 @@ func (pc *VmPusher) SendMetrics(ctx context.Context) error {
 
 	// Prepare the request to sent to pc.pushURL
 	reqBody := bytes.NewReader(bb.B)
-	req, err := http.NewRequestWithContext(ctx, pc.method, pc.pushURL.String(), reqBody)
+
+	var url = pc.pushURL.String()
+	accountID := tenant.AccountID
+	if len(accountID) > 0 {
+		url = strings.ReplaceAll(url, TenantIDPlaceholder, accountID)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, pc.method, url, reqBody)
 	if err != nil {
 		return fmt.Errorf("metrics.push: cannot initialize request for metrics push to %q: %w", pc.pushURLRedacted, err)
 	}

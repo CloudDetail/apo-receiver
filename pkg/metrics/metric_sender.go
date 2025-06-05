@@ -10,10 +10,11 @@ import (
 	pb "github.com/CloudDetail/apo-receiver/internal/prometheus"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/pm"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/vm"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 type Sender interface {
-	SendMetrics(ctx context.Context) error
+	SendMetrics(ctx context.Context, tenant tenancy.TenantInfo) error
 }
 
 func InitMetricSend(url string, interval int, promType string) error {
@@ -23,8 +24,8 @@ func InitMetricSend(url string, interval int, promType string) error {
 	)
 
 	if promType == "vm" {
-		collectMetrics := func(w io.Writer) {
-			GetMetrics(w)
+		collectMetrics := func(tenant tenancy.TenantInfo, w io.Writer) {
+			GetMetrics(tenant, w)
 		}
 		sender, err = vm.NewVmPusher(url, collectMetrics)
 	} else {
@@ -54,7 +55,11 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 			select {
 			case <-ticker.C:
 				ctxLocal, cancel := context.WithTimeout(ctx, interval+time.Second)
-				err := sender.SendMetrics(ctxLocal)
+				tenants := GetUpdateTenant(ctxLocal)
+				var err error
+				for i := 0; i < len(tenants); i++ {
+					err = sender.SendMetrics(ctxLocal, tenants[i])
+				}
 				cancel()
 				if err != nil {
 					log.Printf("[x Send Metrics] %s", err)
@@ -66,4 +71,14 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 	}()
 
 	return nil
+}
+
+func GetUpdateTenant(ctx context.Context) []tenancy.TenantInfo {
+	var tenants []tenancy.TenantInfo
+	tenantScopeRegisteredMetrics.Range(func(key, value any) bool {
+		tenant := key.(tenancy.TenantInfo)
+		tenants = append(tenants, tenant)
+		return true
+	})
+	return tenants
 }

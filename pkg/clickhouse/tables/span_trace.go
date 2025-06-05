@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	insertSpanTraceSQL = `INSERT INTO span_trace (
+	insertSpanTraceSQL = `INSERT INTO "%s".span_trace (
 		timestamp,
 		data_version,
 		pid,
@@ -64,19 +64,23 @@ var cpuTypes = []string{
 	"runq",
 }
 
-func WriteSpanTraces(ctx context.Context, conn *sql.DB, toSends []*model.Trace) error {
+func WriteSpanTraces(ctx context.Context, database string, conn *sql.DB, toSends []*model.Trace) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertSpanTraceSQL)
-		if err != nil {
-			return fmt.Errorf("PrepareContext:%w", err)
+		statement, find := statementCache.GetStatement(database, "span_trace")
+		if !find {
+			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertSpanTraceSQL, database))
+			if err != nil {
+				return fmt.Errorf("PrepareContext:%w", err)
+			}
+			statementCache.SetStatement(database, "span_trace", statement)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+
+		var err error
+
 		for _, trace := range toSends {
 			traceLabel := trace.Labels
 			flags := map[string]bool{

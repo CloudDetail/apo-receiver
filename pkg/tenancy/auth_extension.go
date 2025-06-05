@@ -1,6 +1,7 @@
 package tenancy
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
@@ -14,9 +15,21 @@ import (
 type tenantCtxKey string
 
 const (
-	tenantIDKey  = tenantCtxKey("__tenant_id__")
-	accountIDKey = tenantCtxKey("__account_id__")
+	// tenantIDKey  = tenantCtxKey("__tenant_id__")
+	// accountIDKey = tenantCtxKey("__account_id__")
+
+	tenantKey = tenantCtxKey("__tenant__")
 )
+
+var emptyTenant = TenantInfo{
+	TenantID:  "__empty__",
+	AccountID: "-1",
+}
+
+var systemTenant = TenantInfo{
+	TenantID:  "__SYSTEM__",
+	AccountID: "multitenant",
+}
 
 type AuthExtension struct {
 	cfg *config.TenancyConfig
@@ -68,4 +81,47 @@ func parsePublicKey(keyStr string) (*rsa.PublicKey, error) {
 		return publicKey, nil
 	}
 	return nil, fmt.Errorf("expected *rsa.PublicKey, got %T", pubKey)
+}
+
+func GetTenantID(ctx context.Context) string {
+	val := ctx.Value(tenantKey)
+	if val == nil {
+		return ""
+	}
+	if tenant, ok := val.(*TenantInfo); ok {
+		return tenant.TenantID
+	}
+	return ""
+}
+
+func GetTenant(ctx context.Context) TenantInfo {
+	val := ctx.Value(tenantKey)
+	if val == nil {
+		return TenantInfo{
+			TenantID:  "",
+			AccountID: "",
+		}
+	}
+	if tenant, ok := val.(*TenantInfo); ok {
+		return *tenant
+	}
+	return TenantInfo{
+		TenantID:  "",
+		AccountID: "",
+	}
+}
+
+func GetAccountID(ctx context.Context) string {
+	val := ctx.Value(tenantKey)
+	if val == nil {
+		return ""
+	}
+	if tenant, ok := val.(*TenantInfo); ok {
+		return tenant.AccountID
+	}
+	return ""
+}
+
+func SystemCtx() context.Context {
+	return WithTenant(context.Background(), &systemTenant)
 }

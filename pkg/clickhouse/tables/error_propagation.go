@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertErrorPropagationSQL = `INSERT INTO error_propagation (
+	insertErrorPropagationSQL = `INSERT INTO "%s".error_propagation (
 		timestamp,
 		entry_service,
 		entry_url,
@@ -42,19 +42,22 @@ const (
 	)`
 )
 
-func WriteErrorPropagations(ctx context.Context, conn *sql.DB, toSends []*report.ErrorReport) error {
+func WriteErrorPropagations(ctx context.Context, database string, conn *sql.DB, toSends []*report.ErrorReport) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertErrorPropagationSQL)
-		if err != nil {
-			return fmt.Errorf("PrepareContext:%w", err)
+		statement, find := statementCache.GetStatement(database, "error_propagation")
+		if !find {
+			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertErrorPropagationSQL, database))
+			if err != nil {
+				return fmt.Errorf("PrepareContext:%w", err)
+			}
+			statementCache.SetStatement(database, "error_propagation", statement)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		var err error
+
 		for _, errorReport := range toSends {
 			if errorReport.IsDrop || errorReport.Data.RelationTree == nil {
 				continue

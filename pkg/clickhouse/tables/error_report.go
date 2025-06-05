@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	insertErrorReportSQL = `INSERT INTO error_report (
+	insertErrorReportSQL = `INSERT INTO "%s".error_report (
 		timestamp,
 		is_drop,
 		trace_id,
@@ -42,19 +42,22 @@ const (
 	)`
 )
 
-func WriteErrorReports(ctx context.Context, conn *sql.DB, toSends []*report.ErrorReport) error {
+func WriteErrorReports(ctx context.Context, database string, conn *sql.DB, toSends []*report.ErrorReport) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertErrorReportSQL)
-		if err != nil {
-			return fmt.Errorf("PrepareContext:%w", err)
+		statement, find := statementCache.GetStatement(database, "error_report")
+		if !find {
+			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertErrorReportSQL, database))
+			if err != nil {
+				return fmt.Errorf("PrepareContext:%w", err)
+			}
+			statementCache.SetStatement(database, "error_report", statement)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		var err error
+
 		for _, errorReport := range toSends {
 			relationTrees := ""
 			if errorReport.Data.RelationTree != nil {

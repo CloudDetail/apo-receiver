@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/global"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics"
 	metricModel "github.com/CloudDetail/apo-receiver/pkg/metrics/model"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 
 	apmclient "github.com/CloudDetail/apo-module/apm/client/v1"
 	apmmodel "github.com/CloudDetail/apo-module/apm/model/v1"
@@ -31,7 +33,7 @@ var (
 )
 
 type ReportAnalyzer struct {
-	signals         *profile.SingalsCache
+	signals         *profile.SignalsCache
 	waitMap         sync.Map
 	checkMissMap    sync.Map // <traceId, traceApmType>
 	taskPool        *taskPool
@@ -48,9 +50,11 @@ type ReportAnalyzer struct {
 	externalFactory *external.ExternalFactory
 	taskChans       []chan *traceTask
 	stopChan        chan bool
+
+	signalsMap sync.Map // tenant -> *profile.SingalsCache
 }
 
-func NewReportAnalyzer(cfg *config.AnalyzerConfig, signals *profile.SingalsCache) *ReportAnalyzer {
+func NewReportAnalyzer(cfg *config.AnalyzerConfig, signals *profile.SignalsCache) *ReportAnalyzer {
 	taskChans := make([]chan *traceTask, 0)
 	for i := 0; i < cfg.ThreadCount; i++ {
 		taskChans = append(taskChans, make(chan *traceTask))
@@ -92,7 +96,7 @@ func (analyzer *ReportAnalyzer) Stop() {
 	close(analyzer.stopChan)
 }
 
-func (analyzer *ReportAnalyzer) StoreEvent(eventJson string) {
+func (analyzer *ReportAnalyzer) StoreEvent(ctx context.Context, eventJson string) {
 	agentEvent := &model.AgentEvent{}
 	if err := json.Unmarshal([]byte(eventJson), agentEvent); err != nil {
 		log.Printf("[x Parse Agent Event] Error: %s", err.Error())
@@ -100,7 +104,7 @@ func (analyzer *ReportAnalyzer) StoreEvent(eventJson string) {
 	}
 	fillK8sMetadataInEvent(agentEvent)
 
-	global.CLICK_HOUSE.StoreAgentEvent(agentEvent)
+	global.CLICK_HOUSE.StoreAgentEvent(ctx, agentEvent)
 }
 
 func (analyzer *ReportAnalyzer) CacheMetric(metricJson string) {
@@ -112,7 +116,7 @@ func (analyzer *ReportAnalyzer) CacheMetric(metricJson string) {
 	global.CACHE.StoreMetric(onOffMetricGroup, metricJson)
 }
 
-func (analyzer *ReportAnalyzer) CacheTrace(traceJson string) {
+func (analyzer *ReportAnalyzer) CacheTrace(ctx context.Context, traceJson string) {
 	trace := &model.Trace{Labels: &model.TraceLabels{ThresholdMultiple: 1.0}}
 	if err := json.Unmarshal([]byte(traceJson), trace); err != nil {
 		log.Printf("[x Parse Trace] Error: %s", err.Error())
@@ -137,6 +141,7 @@ func (analyzer *ReportAnalyzer) CacheTrace(traceJson string) {
 			global.CACHE.RecordTraceTime(traceLabel.TraceId, -1)
 		} else {
 			timeNano := time.Now().UnixNano()
+			tenancy.TenantCache.StoreTenantFromCtx(traceLabel.TraceId, ctx)
 			analyzer.checkMissMap.Store(traceLabel.TraceId, &traceApmType{
 				apmType:       traceLabel.ApmType,
 				expireTime:    time.Now().Unix() + analyzer.missTopTime,
@@ -155,11 +160,20 @@ func (analyzer *ReportAnalyzer) CacheTrace(traceJson string) {
 	}
 
 	// Wait delay_duration.
+	tenancy.TenantCache.StoreTenantFromCtx(traceLabel.TraceId, ctx)
 	analyzer.waitMap.Store(traceLabel.TraceId, time.Now().Unix()+analyzer.getWaitTime(traceLabel.ApmType))
 }
 
+// TODO traceID with tenant
 func (analyzer *ReportAnalyzer) Consume(traceId string) {
-	traces := getTracesFromCache(traceId)
+	ctx, find := tenancy.TenantCache.GetTenantCtx(context.Background(), traceId)
+	if !find {
+		// TODO
+		panic("tenant is empty")
+	}
+
+	tenant := tenancy.GetTenant(ctx)
+	traces := getTracesFromCache(tenant.AccountID, traceId)
 	if analyzer.missTopTime <= 0 && traces.RootTrace == nil {
 		log.Printf("[x Miss RootTrace] TraceId: %s", traceId)
 		return
@@ -169,7 +183,7 @@ func (analyzer *ReportAnalyzer) Consume(traceId string) {
 		return
 	}
 	for _, trace := range traces.Traces {
-		sendProfiledSpanTrace(trace)
+		sendProfiledSpanTrace(ctx, trace)
 	}
 	if traces.HasSingleTrace() || traces.HasChangedSample() {
 		// Do not build Relation.
@@ -178,17 +192,17 @@ func (analyzer *ReportAnalyzer) Consume(traceId string) {
 
 	ignoreRetry := traces.Traces[0].Labels.ApmType == "cw"
 	if traces.HasSlow {
-		analyzer.taskPool.addTask(newSlowTraceTask(traces, ignoreRetry))
+		analyzer.taskPool.addTask(newSlowTraceTask(tenant, traces, ignoreRetry))
 	}
 	if traces.HasError {
-		analyzer.taskPool.addTask(newErrorTraceTask(traces, ignoreRetry))
+		analyzer.taskPool.addTask(newErrorTraceTask(tenant, traces, ignoreRetry))
 	}
 	if !traces.HasSlow && !traces.HasError && traces.UnSentTraceCount > 0 {
-		analyzer.taskPool.addTask(newNormalTraceTask(traces, ignoreRetry))
+		analyzer.taskPool.addTask(newNormalTraceTask(tenant, traces, ignoreRetry))
 	}
 }
 
-func getTracesFromCache(traceId string) *model.Traces {
+func getTracesFromCache(accountID string, traceId string) *model.Traces {
 	traces := model.NewTraces(traceId)
 	for _, trace := range global.CACHE.GetTraces(traceId) {
 		traces.AddTrace(trace)
@@ -202,6 +216,7 @@ func getTracesFromCache(traceId string) *model.Traces {
 			key := onoffmetric.MetricKey{
 				ServiceName: matchTrace.Labels.ServiceName,
 				ContentKey:  matchTrace.Labels.Url,
+				AccountID:   accountID,
 			}
 			mutatedType, baseOnOffMetrics, thresholdRange := onoffmetric.CalcMutatedType(slomodel.SLO_LATENCY_P90_TYPE, key, onOffMetricGroup.Metrics)
 			matchTrace.BaseOnOffMetrics = baseOnOffMetrics
@@ -214,14 +229,14 @@ func getTracesFromCache(traceId string) *model.Traces {
 	return traces
 }
 
-func mergeTraces(oldTraces *model.Traces, newTraces *model.Traces) {
+func mergeTraces(ctx context.Context, oldTraces *model.Traces, newTraces *model.Traces) {
 	existTraces := make(map[string]*model.Trace)
 	for _, oldTrace := range oldTraces.Traces {
 		existTraces[oldTrace.Labels.ApmSpanId] = oldTrace
 	}
 	for _, newTrace := range newTraces.Traces {
 		if _, exist := existTraces[newTrace.Labels.ApmSpanId]; !exist {
-			sendProfiledSpanTrace(newTrace)
+			sendProfiledSpanTrace(ctx, newTrace)
 			oldTraces.AddTrace(newTrace)
 		}
 	}
@@ -249,6 +264,8 @@ func (analyzer *ReportAnalyzer) analyze(index int, taskChan chan *traceTask) {
 }
 
 func (analyzer *ReportAnalyzer) processTask(task *traceTask) {
+	ctx := tenancy.WithTenant(context.Background(), &task.tenant)
+
 	if task.retryTimes > 0 {
 		// Check whether there will be new Trace/OnOffMetric.
 		traces := task.traces
@@ -256,42 +273,43 @@ func (analyzer *ReportAnalyzer) processTask(task *traceTask) {
 		metricCount := global.CACHE.GetMetricSize(traces.TraceId)
 		if traceCount > traces.GetTraceCount() || metricCount > traces.MetricCount {
 			// Update New Traces.
-			mergeTraces(task.traces, getTracesFromCache(traces.TraceId))
+			mergeTraces(ctx, task.traces, getTracesFromCache(task.tenant.AccountID, traces.TraceId))
 		}
 	}
-	retry, err := analyzer.buildReport(task.traces, task.reportType)
+
+	retry, err := analyzer.buildReport(ctx, task.traces, task.reportType)
 	if err != nil {
 		if retry {
 			if !task.ignoreRetry && task.retryTimes < analyzer.retryTimes {
 				analyzer.taskPool.retryTask(task)
 			} else {
-				recordDropReport(task.traces, err, task.reportType)
+				recordDropReport(ctx, task.traces, err, task.reportType)
 			}
 		} else {
-			recordDropReport(task.traces, err, task.reportType)
+			recordDropReport(ctx, task.traces, err, task.reportType)
 		}
 	}
 }
 
-func sendProfiledSpanTrace(trace *model.Trace) {
+func sendProfiledSpanTrace(ctx context.Context, trace *model.Trace) {
 	if trace.Labels.IsProfiled || trace.Labels.IsSingleTrace() {
 		if trace.Labels.IsSlow {
 			if trace.MutatedType == "" {
 				trace.MutatedType = "unknown"
 			}
 		}
-		storeTrace(trace)
+		storeTrace(ctx, trace)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildReport(traces *model.Traces, reportType report.ReportType) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildReport(ctx context.Context, traces *model.Traces, reportType report.ReportType) (retry bool, err error) {
 	switch reportType {
 	case report.ErrorReportType:
-		return analyzer.buildErrorReports(traces)
+		return analyzer.buildErrorReports(ctx, traces)
 	case report.SlowReportType:
-		return analyzer.buildSlowReports(traces)
+		return analyzer.buildSlowReports(ctx, traces)
 	case report.NormalReportType:
-		if _, err := analyzer.buildRelations(traces); err != nil {
+		if _, err := analyzer.buildRelations(ctx, traces); err != nil {
 			return true, err
 		}
 		return false, nil
@@ -300,23 +318,23 @@ func (analyzer *ReportAnalyzer) buildReport(traces *model.Traces, reportType rep
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildErrorReports(traces *model.Traces) (retry bool, err error) {
-	serviceNodes, err := analyzer.buildRelations(traces)
+func (analyzer *ReportAnalyzer) buildErrorReports(ctx context.Context, traces *model.Traces) (retry bool, err error) {
+	serviceNodes, err := analyzer.buildRelations(ctx, traces)
 	if err != nil {
 		return true, err
 	}
 	if traces.RootTrace != nil {
-		return analyzer.buildSingleErrorReport(serviceNodes, traces)
+		return analyzer.buildSingleErrorReport(ctx, serviceNodes, traces)
 	} else {
-		return analyzer.buildMultiErrorReports(serviceNodes, traces)
+		return analyzer.buildMultiErrorReports(ctx, serviceNodes, traces)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildSingleErrorReport(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	entryTrace := traces.RootTrace
 	apmType := entryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, entryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -325,17 +343,17 @@ func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.
 	spanTraces := apmclient.NewNodeSpanTraces(apmType, serviceNodes, traces)
 	for _, spanTrace := range spanTraces.Traces {
 		if spanTrace.SampledTrace.Labels.ApmSpanId == entryTrace.Labels.ApmSpanId {
-			return analyzer.generateErrorReport(apmType, traces, spanTrace)
+			return analyzer.generateErrorReport(ctx, apmType, traces, spanTrace)
 		}
 	}
 	return true, fmt.Errorf("entry[%s-%s] is not collected by apo", entryTrace.Labels.ServiceName, entryTrace.Labels.Url)
 }
 
-func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildMultiErrorReports(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	queryTrace := traces.GetQueryTrace()
 	apmType := queryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, queryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -347,7 +365,7 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	}
 
 	for _, spanTrace := range spanTraces.Traces {
-		if _, err := analyzer.generateErrorReport(apmType, traces, spanTrace); err != nil {
+		if _, err := analyzer.generateErrorReport(ctx, apmType, traces, spanTrace); err != nil {
 			log.Print(err.Error())
 		}
 	}
@@ -355,7 +373,7 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) generateErrorReport(apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) generateErrorReport(ctx context.Context, apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
 	apmErrorTree := apmclient.ConvertErrorTree(spanTrace)
 	// [Fix for Arms] Add all error nodes.
 	if global.TRACE_CLIENT.NeedGetDetailSpan(apmType) {
@@ -379,7 +397,7 @@ func (analyzer *ReportAnalyzer) generateErrorReport(apmType string, traces *mode
 		return false, fmt.Errorf("error instance(%s) is not profiled", mutatedTrace.Id)
 	}
 
-	storeTraces(traces)
+	storeTraces(ctx, traces)
 	log.Printf("[Write Error Report] Trace: %s", traces.TraceId)
 
 	data := &report.ErrorReportData{
@@ -413,38 +431,38 @@ func (analyzer *ReportAnalyzer) generateErrorReport(apmType string, traces *mode
 		data.CauseMessage = ""
 	}
 	errorReport := report.NewErrorReport(apmErrorTree.Root.StartTime, traces.TraceId, apmErrorTree.Root.TotalTime, data)
-	global.CLICK_HOUSE.StoreErrorReport(errorReport)
+	global.CLICK_HOUSE.StoreErrorReport(ctx, errorReport)
 
 	return false, nil
 }
 
-func storeTraces(traces *model.Traces) {
+func storeTraces(ctx context.Context, traces *model.Traces) {
 	for _, trace := range traces.Traces {
-		storeTrace(trace)
+		storeTrace(ctx, trace)
 	}
 }
 
-func storeTrace(trace *model.Trace) {
+func storeTrace(ctx context.Context, trace *model.Trace) {
 	if !trace.IsSent {
 		trace.MarkSent()
-		global.CLICK_HOUSE.StoreTraceGroup(trace)
+		global.CLICK_HOUSE.StoreTraceGroup(ctx, trace)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSlowReports(traces *model.Traces) (retry bool, err error) {
-	serviceNodes, err := analyzer.buildRelations(traces)
+func (analyzer *ReportAnalyzer) buildSlowReports(ctx context.Context, traces *model.Traces) (retry bool, err error) {
+	serviceNodes, err := analyzer.buildRelations(ctx, traces)
 	if err != nil {
 		return true, err
 	}
 
 	if traces.RootTrace != nil {
-		return analyzer.buildSingleSlowReport(serviceNodes, traces)
+		return analyzer.buildSingleSlowReport(ctx, serviceNodes, traces)
 	} else {
-		return analyzer.buildMultiSlowReports(serviceNodes, traces)
+		return analyzer.buildMultiSlowReports(ctx, serviceNodes, traces)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (bool, error) {
+func (analyzer *ReportAnalyzer) buildSingleSlowReport(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (bool, error) {
 	entryTrace := traces.RootTrace.Labels
 	if uint64(entryTrace.ThresholdValue) >= entryTrace.Duration {
 		return false, fmt.Errorf("entry service(%s) duration(%d) is less than threshold(%s(%s)=%f)",
@@ -473,7 +491,7 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	apmType := entryTrace.ApmType
 	var err error
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, entryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -482,17 +500,17 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	spanTraces := apmclient.NewNodeSpanTraces(apmType, serviceNodes, traces)
 	for _, spanTrace := range spanTraces.Traces {
 		if spanTrace.SampledTrace.Labels.ApmSpanId == entryTrace.ApmSpanId {
-			return analyzer.generateSlowReport(apmType, traces, spanTrace)
+			return analyzer.generateSlowReport(ctx, apmType, traces, spanTrace)
 		}
 	}
 	return true, fmt.Errorf("entry[%s-%s] is not collected by apo", entryTrace.ServiceName, entryTrace.Url)
 }
 
-func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildMultiSlowReports(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	queryTrace := traces.GetQueryTrace().Labels
 	apmType := queryTrace.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, queryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -510,7 +528,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 				entryTrace.ServiceName, entryTrace.Duration, entryTrace.ThresholdType, entryTrace.ThresholdRange,
 				entryTrace.ThresholdValue)
 		} else {
-			if _, err := analyzer.generateSlowReport(entryTrace.ApmType, traces, spanTrace); err != nil {
+			if _, err := analyzer.generateSlowReport(ctx, entryTrace.ApmType, traces, spanTrace); err != nil {
 				log.Print(err.Error())
 			}
 		}
@@ -518,7 +536,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) generateSlowReport(ctx context.Context, apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
 	apmTraceTree := apmclient.ConvertSlowTree(spanTrace)
 	mutatedTrace, err := apmTraceTree.GetMutatedTraceNode(traces.TraceId, analyzer.muatedRatio, analyzer.mutateNodeMode)
 	if err != nil {
@@ -543,7 +561,7 @@ func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model
 				needProfile = true
 			}
 		}
-		analyzer.signals.AddSignal(entryTrace.ServiceName, entryTrace.Url, foundTrace, needProfile)
+		analyzer.signals.GetSignalsMap(ctx).AddSignal(entryTrace.ServiceName, entryTrace.Url, foundTrace, needProfile)
 
 		if !foundTraceLabels.IsSampled {
 			return false, fmt.Errorf("instance(%s) is not sampled", foundTrace.GetInstanceId())
@@ -553,7 +571,7 @@ func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model
 		}
 
 		mutatedType = foundTrace.MutatedType
-		storeTraces(traces)
+		storeTraces(ctx, traces)
 	} else {
 		return false, fmt.Errorf("instance(%s) is not monited", mutatedTrace.Id)
 	}
@@ -586,11 +604,11 @@ func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model
 	}
 
 	nodeReport := report.NewNodeReport(apmTraceTree.Root.StartTime, traces.TraceId, apmTraceTree.Root.TotalTime, data)
-	global.CLICK_HOUSE.StoreNodeReport(nodeReport)
+	global.CLICK_HOUSE.StoreNodeReport(ctx, nodeReport)
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmodel.OtelServiceNode, error) {
+func (analyzer *ReportAnalyzer) buildRelations(ctx context.Context, traces *model.Traces) ([]*apmmodel.OtelServiceNode, error) {
 	entryTrace := traces.GetQueryTrace()
 	if entryTrace == nil {
 		return nil, nil
@@ -599,12 +617,12 @@ func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmode
 	if traces.RootTrace != nil {
 		key := analyzer.getRelationKey(entryTraceLabels.ServiceName, entryTraceLabels.Url, entryTraceLabels.StartTime, false)
 		if global.CACHE.GetRelationTraceId(key) != "" {
-			storeTraces(traces)
+			storeTraces(ctx, traces)
 			return nil, nil
 		}
 	}
 
-	serviceNodes, err := analyzer.queryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
+	serviceNodes, err := analyzer.queryServices(ctx, entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -628,9 +646,9 @@ func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmode
 		key := analyzer.getRelationKey(topologyNode.ServiceName, topologyNode.Url, topologyNode.StartTime, topologyNode.TopNode)
 		if global.CACHE.GetRelationTraceId(key) == "" {
 			global.CACHE.StoreRelationTraceId(key, traces.TraceId)
-			global.CLICK_HOUSE.StoreRelation(report.NewRelation(traces.TraceId, topologyNode))
+			global.CLICK_HOUSE.StoreRelation(ctx, report.NewRelation(traces.TraceId, topologyNode))
 
-			storeTraces(traces)
+			storeTraces(ctx, traces)
 		}
 	}
 	return serviceNodes, nil
@@ -640,16 +658,16 @@ func (analyzer *ReportAnalyzer) getRelationKey(serviceName, url string, timestam
 	return fmt.Sprintf("%s-%s-%d-%t", serviceName, url, timestamp/analyzer.topologyPeriod, vnode)
 }
 
-func recordDropReport(traces *model.Traces, err error, reportType report.ReportType) {
+func recordDropReport(ctx context.Context, traces *model.Traces, err error, reportType report.ReportType) {
 	log.Printf("[x Build Report] TraceId: %s, Error: %s", traces.TraceId, err.Error())
 	if reportType == report.ErrorReportType {
 		dropReport := report.NewDropErrorReport(report.CameraErrorReport, traces.GetQueryTrace(), err.Error())
-		global.CLICK_HOUSE.StoreErrorReport(dropReport)
+		global.CLICK_HOUSE.StoreErrorReport(ctx, dropReport)
 	} else if reportType == report.SlowReportType {
 		dropReport := report.NewDropReport(report.CameraNodeReport, traces.GetQueryTrace(), err.Error())
-		global.CLICK_HOUSE.StoreNodeReport(dropReport)
+		global.CLICK_HOUSE.StoreNodeReport(ctx, dropReport)
 	} else if reportType == report.NormalReportType {
-		storeTraces(traces)
+		storeTraces(ctx, traces)
 	}
 }
 
@@ -691,6 +709,7 @@ func (analyzer *ReportAnalyzer) checkTask() {
 				if traceValue.expireTime < checkTime {
 					traceId := k.(string)
 					if global.CACHE.GetTraceTime(traceId) == traceValue.checkNanoTime {
+						tenancy.TenantCache.UpdateLastUsed(traceId)
 						analyzer.waitMap.Store(traceId, checkTime+analyzer.getWaitTime(traceValue.apmType))
 					}
 					analyzer.checkMissMap.Delete(k)
@@ -704,10 +723,12 @@ func (analyzer *ReportAnalyzer) checkTask() {
 	}
 }
 
-func (analyzer *ReportAnalyzer) queryServices(apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
+func (analyzer *ReportAnalyzer) queryServices(ctx context.Context, apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
 	serviceNodes, err := global.TRACE_CLIENT.QueryServices(apmType, traceId, rootTrace)
 	// Record Metric
-	metrics.UpdateMetric(metricModel.MetricAdapterApmTraceCount, []string{
+
+	accountID := tenancy.GetAccountID(ctx)
+	metrics.UpdateMetric(accountID, metricModel.MetricAdapterApmTraceCount, []string{
 		rootTrace.NodeName,
 		rootTrace.NodeIp,
 		strconv.FormatUint(uint64(rootTrace.Pid), 10),
@@ -794,6 +815,9 @@ func (pool *taskPool) getToProcessTasks(checkTime int64) []*traceTask {
 }
 
 type traceTask struct {
+	// TODO set tenantID
+	tenant tenancy.TenantInfo
+
 	traces      *model.Traces
 	reportType  report.ReportType
 	retryTimes  int
@@ -801,8 +825,9 @@ type traceTask struct {
 	ignoreRetry bool
 }
 
-func newSlowTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
+func newSlowTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
+		tenant:      tenant,
 		traces:      traces,
 		reportType:  report.SlowReportType,
 		retryTimes:  0,
@@ -810,8 +835,9 @@ func newSlowTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
 	}
 }
 
-func newErrorTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
+func newErrorTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
+		tenant:      tenant,
 		traces:      traces,
 		reportType:  report.ErrorReportType,
 		retryTimes:  0,
@@ -819,8 +845,9 @@ func newErrorTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
 	}
 }
 
-func newNormalTraceTask(traces *model.Traces, ignoreRetry bool) *traceTask {
+func newNormalTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
+		tenant:      tenant,
 		traces:      traces,
 		reportType:  report.NormalReportType,
 		retryTimes:  0,

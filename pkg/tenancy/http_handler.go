@@ -22,8 +22,7 @@ func (a *AuthExtension) AuthMiddleware() context.Handler {
 			return
 		}
 
-		ctx.Values().Set(string(accountIDKey), tenant.AccountID)
-		ctx.Values().Set(string(tenantIDKey), tenant.TenantID)
+		ctx.Values().Set(string(tenantKey), tenant)
 
 		ctx.Next()
 	}

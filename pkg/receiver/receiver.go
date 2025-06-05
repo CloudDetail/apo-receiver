@@ -87,6 +87,16 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("fail to create Prometheus client: %w", err)
 	}
 	log.Printf("Use the prometheus address %v", prometheusCfg.Address)
+
+	if cfg.TenancyCfg.Enabled {
+		if prometheusCfg.Storage != "vm" {
+			return errors.New("prometheus storage must be vm when tenancy is enabled")
+		}
+		prometheusClient = &tenancy.TenantClient{
+			Client: prometheusClient,
+		}
+	}
+
 	prometheusV1Api := v1.NewAPI(prometheusClient)
 
 	clickHouseCfg := &cfg.ClickHouseCfg
@@ -142,6 +152,14 @@ func Run(ctx context.Context) error {
 			// fix for earlier version.
 			promRemoteWriteType = prometheusCfg.Storage
 		}
+
+		if tenancyCfg.Enabled {
+			if prometheusCfg.Storage != "vm" {
+				return errors.New("prometheus storage must be vm when tenancy is enabled")
+			}
+			promSendAddress = fmt.Sprintf("%s%s", `/insert/{TENANT_ID}/prometheus`, prometheusCfg.SendApi)
+		}
+
 		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, promRemoteWriteType); err != nil {
 			return err
 		}

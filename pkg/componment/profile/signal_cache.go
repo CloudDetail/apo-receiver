@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,21 +12,36 @@ import (
 	profile_model "github.com/CloudDetail/apo-receiver/pkg/componment/profile/model"
 	"github.com/CloudDetail/apo-receiver/pkg/global"
 	grpc_model "github.com/CloudDetail/apo-receiver/pkg/model"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 const (
 	CameraReportMetric = "camera_report_metric"
 )
 
-type SingalsCache struct {
+type SignalsCache struct {
+	tenantMap sync.Map // tenant -> sync.Map <nodeIP,SignalCache>
+}
+
+func (c *SignalsCache) GetSignalsMap(ctx context.Context) *SignalsMap {
+	tenant := tenancy.GetTenant(ctx)
+	if sPtr, find := c.tenantMap.Load(tenant); find {
+		return sPtr.(*SignalsMap)
+	}
+	s := &SignalsMap{}
+	c.tenantMap.Store(tenant, s)
+	return s
+}
+
+type SignalsMap struct {
 	cache sync.Map // <nodeIp, SignalCache>
 }
 
-func newSignalsCache() *SingalsCache {
-	return &SingalsCache{}
+func newSignalsCache() *SignalsCache {
+	return &SignalsCache{}
 }
 
-func (signals *SingalsCache) AddSignal(entryService string, entryUrl string, trace *model.Trace, needProfile bool) {
+func (signals *SignalsMap) AddSignal(entryService string, entryUrl string, trace *model.Trace, needProfile bool) {
 	var signal *SignalCache
 	if signalInterface, ok := signals.cache.Load(trace.Labels.NodeIp); ok {
 		signal = signalInterface.(*SignalCache)
@@ -36,7 +52,7 @@ func (signals *SingalsCache) AddSignal(entryService string, entryUrl string, tra
 	signal.addSignal(entryService, entryUrl, trace, needProfile)
 }
 
-func (signals *SingalsCache) QuerySilentSwitches(nodeIp string) ([]string, []string) {
+func (signals *SignalsMap) QuerySilentSwitches(nodeIp string) ([]string, []string) {
 	if signalInterface, ok := signals.cache.Load(nodeIp); ok {
 		signal := signalInterface.(*SignalCache)
 		return signal.querySilentSwitches()
@@ -44,19 +60,25 @@ func (signals *SingalsCache) QuerySilentSwitches(nodeIp string) ([]string, []str
 	return nil, nil
 }
 
-func (signals *SingalsCache) CollectMetrics() {
+func (signals *SignalsCache) CollectMetrics() {
 	timer := time.NewTicker(1 * time.Minute)
 	for {
 		select {
 		case <-timer.C:
-			signals.cache.Range(func(k, v interface{}) bool {
-				countMetrics := v.(*SignalCache).collectCountMetrics()
-				if len(countMetrics) > 0 {
-					log.Printf("[Write Slow Report Metics] Count: %d", len(countMetrics))
-					for _, countMetric := range countMetrics {
-						global.CLICK_HOUSE.StoreReportMetric(countMetric)
+			signals.tenantMap.Range(func(key, value any) bool {
+				sMap := value.(*SignalsMap)
+				tenant := key.(tenancy.TenantInfo)
+				ctx := tenancy.WithTenant(context.Background(), &tenant)
+				sMap.cache.Range(func(k, v interface{}) bool {
+					countMetrics := v.(*SignalCache).collectCountMetrics()
+					if len(countMetrics) > 0 {
+						log.Printf("[Write Slow Report Metics] Count: %d", len(countMetrics))
+						for _, countMetric := range countMetrics {
+							global.CLICK_HOUSE.StoreReportMetric(ctx, countMetric)
+						}
 					}
-				}
+					return true
+				})
 				return true
 			})
 		}

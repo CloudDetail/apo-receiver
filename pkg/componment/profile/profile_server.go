@@ -14,7 +14,7 @@ type ProfileServer struct {
 	normalTraceIdCache *traceIdCache
 	slowTraceIdCache   *traceIdCache
 	errorTraceIdCache  *traceIdCache
-	SignalsCache       *SingalsCache
+	SignalsCache       *SignalsCache
 	openWindowSample   bool
 	windowSampleNum    uint32
 }
@@ -60,7 +60,7 @@ func (server *ProfileServer) QueryProfiles(ctx context.Context, request *model.P
 	)
 
 	if server.openWindowSample {
-		closePidUrls, recoverPidUrls = server.SignalsCache.QuerySilentSwitches(request.NodeIp)
+		closePidUrls, recoverPidUrls = server.SignalsCache.GetSignalsMap(ctx).QuerySilentSwitches(request.NodeIp)
 	}
 	signals := convertToSignals(global.CACHE.GetAndCleanSignals(request.NodeIp))
 	return &model.ProfileResult{

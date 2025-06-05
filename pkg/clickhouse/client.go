@@ -13,6 +13,7 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/clickhouse/tables"
 	profile_model "github.com/CloudDetail/apo-receiver/pkg/componment/profile/model"
 	"github.com/CloudDetail/apo-receiver/pkg/config"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 var (
@@ -28,6 +29,9 @@ type ClickHouseClient struct {
 	exportServiceClient  bool
 	generateClientMetric bool
 	clientMetricWithUrl  bool
+
+	multiTenantEnabled bool
+	multiTenantCache   *multiTenantCache
 }
 
 func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, generateClientMetric bool, clientMetricWithUrl bool) (*ClickHouseClient, error) {
@@ -66,36 +70,49 @@ func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, gene
 	return client, nil
 }
 
-func (client *ClickHouseClient) BatchStore(table string, datas []string) {
-	client.cache.batchStore(table, datas)
+func (client *ClickHouseClient) BatchStore(ctx context.Context, table string, datas []string) {
+	client.GetCache(ctx).batchStore(table, datas)
 }
 
-func (client *ClickHouseClient) StoreTraceGroup(trace *model.Trace) {
-	client.cache.cacheSpanTrace(trace)
+func (client *ClickHouseClient) StoreTraceGroup(ctx context.Context, trace *model.Trace) {
+	client.GetCache(ctx).cacheSpanTrace(trace)
 }
 
-func (client *ClickHouseClient) StoreNodeReport(nodeReport *report.NodeReport) {
-	client.cache.cacheNodeReport(nodeReport)
+func (client *ClickHouseClient) StoreNodeReport(ctx context.Context, nodeReport *report.NodeReport) {
+	client.GetCache(ctx).cacheNodeReport(nodeReport)
 }
 
-func (client *ClickHouseClient) StoreErrorReport(errorReport *report.ErrorReport) {
-	client.cache.cacheErrorReport(errorReport)
+func (client *ClickHouseClient) StoreErrorReport(ctx context.Context, errorReport *report.ErrorReport) {
+	client.GetCache(ctx).cacheErrorReport(errorReport)
 }
 
-func (client *ClickHouseClient) StoreReportMetric(reportMetric *profile_model.SlowReportCountMetric) {
-	client.cache.cacheReportMetric(reportMetric)
+func (client *ClickHouseClient) StoreReportMetric(ctx context.Context, reportMetric *profile_model.SlowReportCountMetric) {
+	client.GetCache(ctx).cacheReportMetric(reportMetric)
 }
 
-func (client *ClickHouseClient) StoreRelation(relation *report.Relation) {
-	client.cache.cacheRelations(relation)
+func (client *ClickHouseClient) StoreRelation(ctx context.Context, relation *report.Relation) {
+	client.GetCache(ctx).cacheRelations(relation)
 }
 
-func (client *ClickHouseClient) StoreAgentEvent(agentEvent *model.AgentEvent) {
-	client.cache.cacheAgentEvent(agentEvent)
+func (client *ClickHouseClient) StoreAgentEvent(ctx context.Context, agentEvent *model.AgentEvent) {
+	client.GetCache(ctx).cacheAgentEvent(agentEvent)
 }
 
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {
 	return tables.QueryTraces(ctx, client.Conn, traceId)
+}
+
+func (client *ClickHouseClient) GetCache(ctx context.Context) *cache {
+	if !client.multiTenantEnabled {
+		return client.cache
+	}
+	tenant := tenancy.GetTenant(ctx)
+	if tenant.TenantID == "" {
+		// TODO error log
+		log.Panic("tenant is empty")
+	}
+
+	return client.multiTenantCache.GetCache(tenant)
 }
 
 func (client *ClickHouseClient) Start() {
@@ -112,54 +129,69 @@ func (client *ClickHouseClient) batchSendToServer() {
 	for {
 		select {
 		case <-timer.C:
-			if err := tables.WriteProfilingEvents(ctx, client.Conn, client.cache.getToSendEventGroups()); err != nil {
-				log.Printf("[x Add ProfilingEvent] %s", err.Error())
+			if !client.multiTenantEnabled {
+				// TODO database
+				client.flushCache(ctx, "", "", client.cache)
+				continue
 			}
-			if err := tables.WriteFlameGraph(ctx, client.Conn, client.cache.getToSendFlameGraphs()); err != nil {
-				log.Printf("[x Add FlameGraph] %s", err.Error())
-			}
-			if err := tables.WriteJvmGcs(ctx, client.Conn, client.cache.getToSendJvmGcs()); err != nil {
-				log.Printf("[x Add JvmGc] %s", err.Error())
-			}
-			if err := tables.WriteSpanTraces(ctx, client.Conn, client.cache.getToSendSpanTraces()); err != nil {
-				log.Printf("[x Add SpanTrace] %s", err.Error())
-			}
-			if err := tables.WriteSlowReports(ctx, client.Conn, client.cache.getToSendNodeReports()); err != nil {
-				log.Printf("[x Add SlowReport] %s", err.Error())
-			}
-			errorReports := client.cache.getToSendErrorReports()
-			if err := tables.WriteErrorReports(ctx, client.Conn, errorReports); err != nil {
-				log.Printf("[x Add ErrorReport] %s", err.Error())
-			}
-			if err := tables.WriteErrorPropagations(ctx, client.Conn, errorReports); err != nil {
-				log.Printf("[x Add ErrorPropagation] %s", err.Error())
-			}
-			if err := tables.WriteReportMetrics(ctx, client.Conn, client.cache.getToSendReportMetrics()); err != nil {
-				log.Printf("[x Add ReportMetric] %s", err.Error())
-			}
-			if err := tables.WriteOnOffMetrics(ctx, client.Conn, client.cache.getToSendOnOffMetrics()); err != nil {
-				log.Printf("[x Add OnOffMetric] %s", err.Error())
-			}
-			relations := client.cache.getToSendRelations()
-			if err := tables.WriteServiceRelationships(ctx, client.Conn, relations); err != nil {
-				log.Printf("[x Add ServiceRelationship] %s", err.Error())
-			}
-			agentEvents := client.cache.getToSendAgentEvents()
-			if err := tables.WriteAgentEvents(ctx, client.Conn, agentEvents); err != nil {
-				log.Printf("[x Add AgentEvent] %s", err.Error())
-			}
-			if client.exportServiceClient {
-				if err := tables.WriteServiceClients(ctx, client.Conn, relations); err != nil {
-					log.Printf("[x Add ServiceClient] %s", err.Error())
-				}
-			}
-			if client.generateClientMetric {
-				tables.WriteClientMetric(relations, client.clientMetricWithUrl)
-			}
+			client.multiTenantCache.caches.Range(func(k, v interface{}) bool {
+				cache := v.(*cache)
+				// TODO add db
+				tenant := k.(tenancy.TenantInfo)
+				client.flushCache(ctx, tenant.TenantID, tenant.AccountID, cache)
+				return true
+			})
 		case <-client.stopChan:
 			timer.Stop()
 			return
 		}
+	}
+}
+
+func (client *ClickHouseClient) flushCache(ctx context.Context, database string, accountID string, cache *cache) {
+	if err := tables.WriteProfilingEvents(ctx, database, client.Conn, cache.getToSendEventGroups()); err != nil {
+		log.Printf("[x Add ProfilingEvent] %s", err.Error())
+	}
+	if err := tables.WriteFlameGraph(ctx, database, client.Conn, cache.getToSendFlameGraphs()); err != nil {
+		log.Printf("[x Add FlameGraph] %s", err.Error())
+	}
+	if err := tables.WriteJvmGcs(ctx, database, client.Conn, cache.getToSendJvmGcs()); err != nil {
+		log.Printf("[x Add JvmGc] %s", err.Error())
+	}
+	if err := tables.WriteSpanTraces(ctx, database, client.Conn, cache.getToSendSpanTraces()); err != nil {
+		log.Printf("[x Add SpanTrace] %s", err.Error())
+	}
+	if err := tables.WriteSlowReports(ctx, database, client.Conn, cache.getToSendNodeReports()); err != nil {
+		log.Printf("[x Add SlowReport] %s", err.Error())
+	}
+	errorReports := cache.getToSendErrorReports()
+	if err := tables.WriteErrorReports(ctx, database, client.Conn, errorReports); err != nil {
+		log.Printf("[x Add ErrorReport] %s", err.Error())
+	}
+	if err := tables.WriteErrorPropagations(ctx, database, client.Conn, errorReports); err != nil {
+		log.Printf("[x Add ErrorPropagation] %s", err.Error())
+	}
+	if err := tables.WriteReportMetrics(ctx, database, client.Conn, cache.getToSendReportMetrics()); err != nil {
+		log.Printf("[x Add ReportMetric] %s", err.Error())
+	}
+	if err := tables.WriteOnOffMetrics(ctx, database, client.Conn, cache.getToSendOnOffMetrics()); err != nil {
+		log.Printf("[x Add OnOffMetric] %s", err.Error())
+	}
+	relations := cache.getToSendRelations()
+	if err := tables.WriteServiceRelationships(ctx, database, client.Conn, relations); err != nil {
+		log.Printf("[x Add ServiceRelationship] %s", err.Error())
+	}
+	agentEvents := cache.getToSendAgentEvents()
+	if err := tables.WriteAgentEvents(ctx, database, client.Conn, agentEvents); err != nil {
+		log.Printf("[x Add AgentEvent] %s", err.Error())
+	}
+	if client.exportServiceClient {
+		if err := tables.WriteServiceClients(ctx, database, client.Conn, relations); err != nil {
+			log.Printf("[x Add ServiceClient] %s", err.Error())
+		}
+	}
+	if client.generateClientMetric {
+		tables.WriteClientMetric(relations, client.clientMetricWithUrl, accountID)
 	}
 }
 

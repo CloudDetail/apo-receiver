@@ -40,16 +40,16 @@ func NewTraceServer(analyzer *analyzer.ReportAnalyzer) *TraceServer {
 	}
 }
 
-func (server *TraceServer) StoreDataGroups(_ context.Context, dataGroups *grpc_model.DataGroups) (*emptypb.Empty, error) {
+func (server *TraceServer) StoreDataGroups(ctx context.Context, dataGroups *grpc_model.DataGroups) (*emptypb.Empty, error) {
 	if dataGroups.Name == report.OnOffMetricGroup {
 		for _, data := range dataGroups.Datas {
 			server.analyzer.CacheMetric(data)
 		}
 		// OnOffMetric
-		global.CLICK_HOUSE.BatchStore(dataGroups.Name, dataGroups.Datas)
+		global.CLICK_HOUSE.BatchStore(ctx, dataGroups.Name, dataGroups.Datas)
 	} else if dataGroups.Name == report.SpanTraceGroup {
 		for _, data := range dataGroups.Datas {
-			server.analyzer.CacheTrace(data)
+			server.analyzer.CacheTrace(ctx, data)
 		}
 	} else if dataGroups.Name == report.DesignatedProfilingSignal {
 		// Same with the structure of SpanTraceGroup but lacked trace labels,
@@ -60,15 +60,15 @@ func (server *TraceServer) StoreDataGroups(_ context.Context, dataGroups *grpc_m
 				log.Printf("[x Parse Profile Signal] Error: %s", err.Error())
 				continue
 			}
-			global.CLICK_HOUSE.StoreTraceGroup(signal)
+			global.CLICK_HOUSE.StoreTraceGroup(ctx, signal)
 		}
 	} else if dataGroups.Name == report.OriginxAgentEvent {
 		for _, data := range dataGroups.Datas {
-			server.analyzer.StoreEvent(data)
+			server.analyzer.StoreEvent(ctx, data)
 		}
 	} else {
 		// Profile、Log
-		global.CLICK_HOUSE.BatchStore(dataGroups.Name, dataGroups.Datas)
+		global.CLICK_HOUSE.BatchStore(ctx, dataGroups.Name, dataGroups.Datas)
 	}
 	if len(dataGroups.Datas) > 0 {
 		ReceiveMessageTotal.WithLabelValues(dataGroups.Name).Inc()

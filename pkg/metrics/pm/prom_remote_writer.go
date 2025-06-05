@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	pb "github.com/CloudDetail/apo-receiver/internal/prometheus"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 )
@@ -34,7 +35,7 @@ func NewPromRemoteWriter(writeURL string, buildMetricRequestFn func() *pb.WriteR
 	}, nil
 }
 
-func (pm *PromRemoteWriter) SendMetrics(ctx context.Context) error {
+func (pm *PromRemoteWriter) SendMetrics(ctx context.Context, _ tenancy.TenantInfo) error {
 	request := pm.buildMetricRequestFn()
 	if request == nil {
 		return nil

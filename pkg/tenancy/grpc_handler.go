@@ -115,7 +115,6 @@ func (a *AuthExtension) parseToken(tokenStr string) (*TenantInfo, error) {
 }
 
 func WithTenant(ctx context.Context, tenant *TenantInfo) context.Context {
-	ctx = context.WithValue(ctx, accountIDKey, tenant.AccountID)
-	ctx = context.WithValue(ctx, tenantIDKey, tenant.TenantID)
+	ctx = context.WithValue(ctx, tenantKey, tenant)
 	return ctx
 }

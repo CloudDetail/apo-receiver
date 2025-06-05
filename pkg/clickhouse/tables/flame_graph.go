@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	insertFlameGraphSQL = `INSERT INTO flame_graph (
+	insertFlameGraphSQL = `INSERT INTO "%s".flame_graph (
 		start_time,
 		end_time,
 		pid,
@@ -47,19 +47,23 @@ type FlameGraphEvent struct {
 	EndTime     uint64 `json:"end_time"`
 }
 
-func WriteFlameGraph(ctx context.Context, conn *sql.DB, toSends []string) error {
+func WriteFlameGraph(ctx context.Context, database string, conn *sql.DB, toSends []string) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertFlameGraphSQL)
-		if err != nil {
-			return fmt.Errorf("PrepareContext:%w", err)
+		statement, find := statementCache.GetStatement(database, "flame_graph")
+		if !find {
+			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertFlameGraphSQL, database))
+			if err != nil {
+				return fmt.Errorf("PrepareContext:%w", err)
+			}
+			statementCache.SetStatement(database, "flame_graph", statement)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+
+		var err error
+
 		for _, flameGraphJson := range toSends {
 			flameGraphEvent := &FlameGraphEvent{}
 			if err := json.Unmarshal([]byte(flameGraphJson), flameGraphEvent); err != nil {
