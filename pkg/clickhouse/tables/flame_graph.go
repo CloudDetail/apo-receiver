@@ -55,7 +55,8 @@ func WriteFlameGraph(ctx context.Context, database string, conn *sql.DB, toSends
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "flame_graph")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertFlameGraphSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertFlameGraphSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

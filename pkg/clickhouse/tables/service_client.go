@@ -55,7 +55,8 @@ func WriteServiceClients(ctx context.Context, database string, conn *sql.DB, toS
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "service_client")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertServiceClientSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertServiceClientSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

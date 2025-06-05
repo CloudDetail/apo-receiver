@@ -45,7 +45,8 @@ func WriteServiceRelationships(ctx context.Context, database string, conn *sql.D
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "service_relationship")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertServiceRelationShipSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertServiceRelationShipSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

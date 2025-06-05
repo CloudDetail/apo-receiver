@@ -32,7 +32,8 @@ func WriteAgentEvents(ctx context.Context, database string, conn *sql.DB, toSend
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "originx_agent_event")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertAgentEventSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertAgentEventSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

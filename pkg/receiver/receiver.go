@@ -100,7 +100,7 @@ func Run(ctx context.Context) error {
 	prometheusV1Api := v1.NewAPI(prometheusClient)
 
 	clickHouseCfg := &cfg.ClickHouseCfg
-	clickHouseClient, err := clickhouse.NewClickHouseClient(ctx, clickHouseCfg, prometheusCfg.GenerateClientMetric, prometheusCfg.ClientMetricWithUrl)
+	clickHouseClient, err := clickhouse.NewClickHouseClient(ctx, clickHouseCfg, prometheusCfg.GenerateClientMetric, prometheusCfg.ClientMetricWithUrl, cfg.TenancyCfg.Enabled)
 	if err != nil {
 		return fmt.Errorf("fail to create ClickHouse client: %w", err)
 	}

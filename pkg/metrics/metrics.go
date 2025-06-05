@@ -12,7 +12,6 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/model"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/pm"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/vm"
-	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 type Metric interface {
@@ -133,9 +132,7 @@ func UpdateMetric(accoundID string, metricDef *model.MetricDef, labelValues []st
 	return nil
 }
 
-func GetMetrics(tenant tenancy.TenantInfo, w io.Writer) {
-	accountID := tenant.AccountID
-
+func GetMetrics(accountID string, w io.Writer) {
 	rPtr, find := tenantScopeRegisteredMetrics.Load(accountID)
 	if !find {
 		return

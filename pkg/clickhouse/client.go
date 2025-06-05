@@ -39,7 +39,7 @@ type ClickHouseClient struct {
 	tableHash map[string]string
 }
 
-func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, generateClientMetric bool, clientMetricWithUrl bool) (*ClickHouseClient, error) {
+func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, generateClientMetric bool, clientMetricWithUrl bool, multiTenantEnabled bool) (*ClickHouseClient, error) {
 	if cfg.Endpoint == "" {
 		return nil, errConfigNoEndpoint
 	}
@@ -72,9 +72,11 @@ func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, gene
 		generateClientMetric: generateClientMetric,
 		clientMetricWithUrl:  clientMetricWithUrl,
 
-		cfg:       cfg,
-		tableTTLs: tableTTLs,
-		tableHash: tableHash,
+		multiTenantEnabled: multiTenantEnabled,
+		multiTenantCache:   &multiTenantCache{},
+		cfg:                cfg,
+		tableTTLs:          tableTTLs,
+		tableHash:          tableHash,
 	}
 	return client, nil
 }

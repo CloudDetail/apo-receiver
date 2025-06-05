@@ -45,7 +45,8 @@ func WriteOnOffMetrics(ctx context.Context, database string, conn *sql.DB, toSen
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "onoff_metric")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertOnoffMetricSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertOnoffMetricSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

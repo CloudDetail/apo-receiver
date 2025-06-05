@@ -11,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-
-	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 type VmPusher struct {
@@ -23,10 +21,10 @@ type VmPusher struct {
 	disableCompression bool
 
 	client           *http.Client
-	collectMetricsFn func(tenant tenancy.TenantInfo, w io.Writer)
+	collectMetricsFn func(accountID string, w io.Writer)
 }
 
-func NewVmPusher(pushURL string, collectMetricsFn func(tenant tenancy.TenantInfo, w io.Writer)) (*VmPusher, error) {
+func NewVmPusher(pushURL string, collectMetricsFn func(accountID string, w io.Writer)) (*VmPusher, error) {
 	// validate pushURL
 	pu, err := url.Parse(pushURL)
 	if err != nil {
@@ -61,11 +59,11 @@ const (
 	TenantIDPlaceholder = "{TENANT_ID}"
 )
 
-func (pc *VmPusher) SendMetrics(ctx context.Context, tenant tenancy.TenantInfo) error {
+func (pc *VmPusher) SendMetrics(ctx context.Context, accountID string) error {
 	bb := getBytesBuffer()
 	defer putBytesBuffer(bb)
 
-	pc.collectMetricsFn(tenant, bb)
+	pc.collectMetricsFn(accountID, bb)
 
 	if !pc.disableCompression {
 		bbTmp := getBytesBuffer()
@@ -86,7 +84,6 @@ func (pc *VmPusher) SendMetrics(ctx context.Context, tenant tenancy.TenantInfo) 
 	reqBody := bytes.NewReader(bb.B)
 
 	var url = pc.pushURL.String()
-	accountID := tenant.AccountID
 	if len(accountID) > 0 {
 		url = strings.ReplaceAll(url, TenantIDPlaceholder, accountID)
 	}

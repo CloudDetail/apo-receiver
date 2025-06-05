@@ -14,7 +14,7 @@ import (
 )
 
 type Sender interface {
-	SendMetrics(ctx context.Context, tenant tenancy.TenantInfo) error
+	SendMetrics(ctx context.Context, accountID string) error
 }
 
 func InitMetricSend(url string, interval int, promType string) error {
@@ -24,8 +24,8 @@ func InitMetricSend(url string, interval int, promType string) error {
 	)
 
 	if promType == "vm" {
-		collectMetrics := func(tenant tenancy.TenantInfo, w io.Writer) {
-			GetMetrics(tenant, w)
+		collectMetrics := func(accountID string, w io.Writer) {
+			GetMetrics(accountID, w)
 		}
 		sender, err = vm.NewVmPusher(url, collectMetrics)
 	} else {
@@ -58,7 +58,7 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 				tenants := GetUpdateTenant(ctxLocal)
 				var err error
 				for i := 0; i < len(tenants); i++ {
-					err = sender.SendMetrics(ctxLocal, tenants[i])
+					err = sender.SendMetrics(ctxLocal, tenants[i].AccountID)
 				}
 				cancel()
 				if err != nil {

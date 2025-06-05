@@ -36,7 +36,8 @@ func WriteReportMetrics(ctx context.Context, database string, conn *sql.DB, toSe
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "report_metric")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertReportMetricSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertReportMetricSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

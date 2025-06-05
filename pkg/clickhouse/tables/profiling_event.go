@@ -73,7 +73,8 @@ func WriteProfilingEvents(ctx context.Context, database string, conn *sql.DB, to
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "profiling_event")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertProfilingEventSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertProfilingEventSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}

@@ -147,7 +147,7 @@ func realtimeErrorReport(ctx iris.Context) {
 
 func getPromMetrics(ctx iris.Context) {
 	tenant := tenancy.GetTenant(ctx)
-	metrics.GetMetrics(tenant, ctx.ResponseWriter())
+	metrics.GetMetrics(tenant.AccountID, ctx.ResponseWriter())
 }
 
 func responseWithError(ctx iris.Context, err error) {

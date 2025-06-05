@@ -59,7 +59,8 @@ func WriteJvmGcs(ctx context.Context, database string, conn *sql.DB, toSends []s
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, find := statementCache.GetStatement(database, "jvm_gc")
 		if !find {
-			statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertJvmGcSQL, database))
+			var err error
+			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertJvmGcSQL, database))
 			if err != nil {
 				return fmt.Errorf("PrepareContext:%w", err)
 			}
