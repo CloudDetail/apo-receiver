@@ -22,8 +22,8 @@ const (
 )
 
 var emptyTenant = TenantInfo{
-	TenantID:  "__empty__",
-	AccountID: "-1",
+	TenantID:  "",
+	AccountID: "",
 }
 
 var systemTenant = TenantInfo{
@@ -97,18 +97,12 @@ func GetTenantID(ctx context.Context) string {
 func GetTenant(ctx context.Context) TenantInfo {
 	val := ctx.Value(tenantKey)
 	if val == nil {
-		return TenantInfo{
-			TenantID:  "",
-			AccountID: "",
-		}
+		return emptyTenant
 	}
 	if tenant, ok := val.(*TenantInfo); ok {
 		return *tenant
 	}
-	return TenantInfo{
-		TenantID:  "",
-		AccountID: "",
-	}
+	return emptyTenant
 }
 
 func GetAccountID(ctx context.Context) string {
@@ -124,4 +118,8 @@ func GetAccountID(ctx context.Context) string {
 
 func SystemCtx() context.Context {
 	return WithTenant(context.Background(), &systemTenant)
+}
+
+func EmptyCtx() context.Context {
+	return WithTenant(context.Background(), &emptyTenant)
 }

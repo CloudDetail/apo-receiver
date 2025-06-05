@@ -48,6 +48,10 @@ func (mc *multiTenantCache) GetCache(
 const DEFAULT_TENANT_DATABASE_PATTERN = `apo_tenant_{TENANT_ID}`
 
 func tenantDB(tenantID string, cfg *config.ClickHouseConfig) string {
+	if tenantID == "" {
+		return cfg.Database
+	}
+
 	if db, exist := cfg.TenantDBMap[tenantID]; exist {
 		return db
 	}

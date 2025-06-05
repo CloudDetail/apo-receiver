@@ -50,8 +50,6 @@ type ReportAnalyzer struct {
 	externalFactory *external.ExternalFactory
 	taskChans       []chan *traceTask
 	stopChan        chan bool
-
-	signalsMap sync.Map // tenant -> *profile.SingalsCache
 }
 
 func NewReportAnalyzer(cfg *config.AnalyzerConfig, signals *profile.SignalsCache) *ReportAnalyzer {
@@ -164,14 +162,8 @@ func (analyzer *ReportAnalyzer) CacheTrace(ctx context.Context, traceJson string
 	analyzer.waitMap.Store(traceLabel.TraceId, time.Now().Unix()+analyzer.getWaitTime(traceLabel.ApmType))
 }
 
-// TODO traceID with tenant
 func (analyzer *ReportAnalyzer) Consume(traceId string) {
-	ctx, find := tenancy.TenantCache.GetTenantCtx(context.Background(), traceId)
-	if !find {
-		// TODO
-		panic("tenant is empty")
-	}
-
+	ctx, _ := tenancy.TenantCache.GetTenantCtx(context.Background(), traceId)
 	tenant := tenancy.GetTenant(ctx)
 	traces := getTracesFromCache(tenant.AccountID, traceId)
 	if analyzer.missTopTime <= 0 && traces.RootTrace == nil {

@@ -116,11 +116,6 @@ func (client *ClickHouseClient) GetCache(ctx context.Context) *cache {
 		return client.cache
 	}
 	tenant := tenancy.GetTenant(ctx)
-	if tenant.TenantID == "" {
-		// TODO error log
-		log.Panic("tenant is empty")
-	}
-
 	return client.multiTenantCache.GetCache(tenant, client.cfg, client.tableTTLs, client.tableHash)
 }
 
