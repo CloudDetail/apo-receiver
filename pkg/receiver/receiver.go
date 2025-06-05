@@ -157,7 +157,7 @@ func Run(ctx context.Context) error {
 			if prometheusCfg.Storage != "vm" {
 				return errors.New("prometheus storage must be vm when tenancy is enabled")
 			}
-			promSendAddress = fmt.Sprintf("%s%s", `/insert/{TENANT_ID}/prometheus`, prometheusCfg.SendApi)
+			prometheusCfg.SendApi = fmt.Sprintf("%s%s", `/insert/{TENANT_ID}/prometheus`, prometheusCfg.SendApi)
 		}
 
 		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, promRemoteWriteType); err != nil {

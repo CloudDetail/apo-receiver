@@ -13,7 +13,7 @@ func CreateHttpClient(proxy bool, proxyAddress string) *http.Client {
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 10,
 		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
+			Timeout:   1 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 	}
