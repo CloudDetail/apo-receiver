@@ -32,6 +32,11 @@ type ClickHouseClient struct {
 
 	multiTenantEnabled bool
 	multiTenantCache   *multiTenantCache
+
+	cfg *config.ClickHouseConfig
+
+	tableTTLs map[string]uint
+	tableHash map[string]string
 }
 
 func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, generateClientMetric bool, clientMetricWithUrl bool) (*ClickHouseClient, error) {
@@ -66,6 +71,10 @@ func NewClickHouseClient(ctx context.Context, cfg *config.ClickHouseConfig, gene
 		exportServiceClient:  cfg.ExportServiceClient,
 		generateClientMetric: generateClientMetric,
 		clientMetricWithUrl:  clientMetricWithUrl,
+
+		cfg:       cfg,
+		tableTTLs: tableTTLs,
+		tableHash: tableHash,
 	}
 	return client, nil
 }
@@ -112,7 +121,7 @@ func (client *ClickHouseClient) GetCache(ctx context.Context) *cache {
 		log.Panic("tenant is empty")
 	}
 
-	return client.multiTenantCache.GetCache(tenant)
+	return client.multiTenantCache.GetCache(tenant, client.cfg, client.tableTTLs, client.tableHash)
 }
 
 func (client *ClickHouseClient) Start() {
@@ -130,15 +139,14 @@ func (client *ClickHouseClient) batchSendToServer() {
 		select {
 		case <-timer.C:
 			if !client.multiTenantEnabled {
-				// TODO database
-				client.flushCache(ctx, "", "", client.cache)
+				client.flushCache(ctx, client.cfg.Database, "", client.cache)
 				continue
 			}
 			client.multiTenantCache.caches.Range(func(k, v interface{}) bool {
 				cache := v.(*cache)
-				// TODO add db
 				tenant := k.(tenancy.TenantInfo)
-				client.flushCache(ctx, tenant.TenantID, tenant.AccountID, cache)
+				database := tenantDB(tenant.TenantID, client.cfg)
+				client.flushCache(ctx, database, tenant.AccountID, cache)
 				return true
 			})
 		case <-client.stopChan:

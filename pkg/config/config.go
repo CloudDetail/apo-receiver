@@ -84,6 +84,9 @@ type ClickHouseConfig struct {
 	// If Not set will be set to 5.
 	FlushSeconds        uint `mapstructure:"flush_seconds"`
 	ExportServiceClient bool `mapstructure:"export_service_client"`
+
+	TenantDBPattern string            `mapstructure:"tenant_db_pattern"`
+	TenantDBMap     map[string]string `mapstructure:"tenant_db_map"`
 }
 
 type TTLConfig struct {
