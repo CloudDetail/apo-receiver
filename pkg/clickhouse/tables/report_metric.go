@@ -34,16 +34,11 @@ func WriteReportMetrics(ctx context.Context, database string, conn *sql.DB, toSe
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "report_metric")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertReportMetricSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "report_metric", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertReportMetricSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		var err error
+		defer statement.Close()
 
 		for _, reportMetric := range toSends {
 			_, err = statement.ExecContext(ctx,

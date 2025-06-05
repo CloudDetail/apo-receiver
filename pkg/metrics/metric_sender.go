@@ -10,7 +10,6 @@ import (
 	pb "github.com/CloudDetail/apo-receiver/internal/prometheus"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/pm"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics/vm"
-	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 )
 
 type Sender interface {
@@ -55,10 +54,10 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 			select {
 			case <-ticker.C:
 				ctxLocal, cancel := context.WithTimeout(ctx, interval+time.Second)
-				tenants := GetUpdateTenant(ctxLocal)
+				accountIDs := GetUpdateTenant(ctxLocal)
 				var err error
-				for i := 0; i < len(tenants); i++ {
-					err = sender.SendMetrics(ctxLocal, tenants[i].AccountID)
+				for i := 0; i < len(accountIDs); i++ {
+					err = sender.SendMetrics(ctxLocal, accountIDs[i])
 				}
 				cancel()
 				if err != nil {
@@ -73,10 +72,10 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 	return nil
 }
 
-func GetUpdateTenant(ctx context.Context) []tenancy.TenantInfo {
-	var tenants []tenancy.TenantInfo
+func GetUpdateTenant(ctx context.Context) []string {
+	var tenants []string
 	tenantScopeRegisteredMetrics.Range(func(key, value any) bool {
-		tenant := key.(tenancy.TenantInfo)
+		tenant := key.(string)
 		tenants = append(tenants, tenant)
 		return true
 	})

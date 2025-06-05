@@ -57,17 +57,12 @@ func WriteJvmGcs(ctx context.Context, database string, conn *sql.DB, toSends []s
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "jvm_gc")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertJvmGcSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "jvm_gc", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertJvmGcSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
+		defer statement.Close()
 
-		var err error
 		for _, jvmGcJson := range toSends {
 			jvmGc := &JvmGcInfo{}
 			if err := json.Unmarshal([]byte(jvmGcJson), jvmGc); err != nil {

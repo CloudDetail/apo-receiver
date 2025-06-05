@@ -30,16 +30,11 @@ func WriteAgentEvents(ctx context.Context, database string, conn *sql.DB, toSend
 		return nil
 	}
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "originx_agent_event")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertAgentEventSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "originx_agent_event", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertAgentEventSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		var err error
+		defer statement.Close()
 
 		for _, toSend := range toSends {
 			_, err = statement.ExecContext(ctx,

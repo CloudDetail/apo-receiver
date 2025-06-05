@@ -48,16 +48,11 @@ func WriteErrorPropagations(ctx context.Context, database string, conn *sql.DB, 
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "error_propagation")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertErrorPropagationSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "error_propagation", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertErrorPropagationSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		var err error
+		defer statement.Close()
 
 		for _, errorReport := range toSends {
 			if errorReport.IsDrop || errorReport.Data.RelationTree == nil {

@@ -49,17 +49,11 @@ func WriteSlowReports(ctx context.Context, database string, conn *sql.DB, toSend
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "slow_report")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertSlowReportSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "slow_report", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertSlowReportSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-
-		var err error
+		defer statement.Close()
 
 		for _, nodeReport := range toSends {
 			relationTrees := ""

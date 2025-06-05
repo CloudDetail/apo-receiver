@@ -53,16 +53,11 @@ func WriteServiceClients(ctx context.Context, database string, conn *sql.DB, toS
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "service_client")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertServiceClientSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "service_client", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertServiceClientSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		var err error
+		defer statement.Close()
 
 		for _, toSend := range toSends {
 			timestamp := asTime(int64(toSend.RootNode.StartTime))

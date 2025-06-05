@@ -71,17 +71,12 @@ func WriteProfilingEvents(ctx context.Context, database string, conn *sql.DB, to
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "profiling_event")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertProfilingEventSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "profiling_event", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertProfilingEventSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
+		defer statement.Close()
 
-		var err error
 		for _, eventGroupJson := range toSends {
 			eventGroup := &CameraEventGroup{}
 			if err := json.Unmarshal([]byte(eventGroupJson), eventGroup); err != nil {

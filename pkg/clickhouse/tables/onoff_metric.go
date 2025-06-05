@@ -43,16 +43,11 @@ func WriteOnOffMetrics(ctx context.Context, database string, conn *sql.DB, toSen
 		return nil
 	}
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, find := statementCache.GetStatement(database, "onoff_metric")
-		if !find {
-			var err error
-			statement, err = tx.PrepareContext(ctx, fmt.Sprintf(insertOnoffMetricSQL, database))
-			if err != nil {
-				return fmt.Errorf("PrepareContext:%w", err)
-			}
-			statementCache.SetStatement(database, "onoff_metric", statement)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertOnoffMetricSQL, database))
+		if err != nil {
+			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		var err error
+		defer statement.Close()
 
 		for _, onoffJson := range toSends {
 			onOffMetric := &OnOffMetric{}
