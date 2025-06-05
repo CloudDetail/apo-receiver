@@ -807,7 +807,6 @@ func (pool *taskPool) getToProcessTasks(checkTime int64) []*traceTask {
 }
 
 type traceTask struct {
-	// TODO set tenantID
 	tenant tenancy.TenantInfo
 
 	traces      *model.Traces

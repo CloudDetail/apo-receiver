@@ -146,8 +146,9 @@ func WriteSpanTraces(ctx context.Context, database string, conn *sql.DB, toSends
 	return err
 }
 
-func QueryTraces(ctx context.Context, conn *sql.DB, traceId string) (*model.Traces, error) {
-	rows, err := conn.Query("SELECT * FROM span_trace WHERE trace_id=?", traceId)
+func QueryTraces(ctx context.Context, database string, conn *sql.DB, traceId string) (*model.Traces, error) {
+	sql := fmt.Sprintf(`SELECT * FROM "%s".span_trace WHERE trace_id=?`, database)
+	rows, err := conn.Query(sql, traceId)
 	if err != nil {
 		return nil, err
 	}

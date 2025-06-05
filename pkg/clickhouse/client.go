@@ -108,7 +108,8 @@ func (client *ClickHouseClient) StoreAgentEvent(ctx context.Context, agentEvent 
 }
 
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {
-	return tables.QueryTraces(ctx, client.Conn, traceId)
+	database := tenantDB(tenancy.GetTenant(ctx).TenantID, client.cfg)
+	return tables.QueryTraces(ctx, database, client.Conn, traceId)
 }
 
 func (client *ClickHouseClient) GetCache(ctx context.Context) *cache {
