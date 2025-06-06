@@ -68,15 +68,28 @@ func (s steamInterceptorWrap) Context() context.Context {
 	return s.context
 }
 
-type TenantInfo struct {
-	TenantID  string `json:"tenant_id"`
-	AccountID string `json:"account_id"`
+type UserInfo struct {
+	Sub    string  `json:"sub"`
+	Tenant Tentant `json:"tenant"`
 }
 
-func (a *AuthExtension) parseToken(tokenStr string) (*TenantInfo, error) {
+type Tentant struct {
+	TenantID    string `json:"tenant_id"`
+	AccountID   uint32 `json:"account_id"`
+	Multitenant bool   `json:"-"`
+}
+
+func (i UserInfo) GetAccountID() string {
+	if i.Tenant.Multitenant {
+		return "multitenant"
+	}
+	return strconv.FormatUint(uint64(i.Tenant.AccountID), 10)
+}
+
+func (a *AuthExtension) parseToken(tokenStr string) (*UserInfo, error) {
 	hash := xxhash.Sum64String(tokenStr)
 	if val, ok := a.jwtCache.Load(hash); ok {
-		if info, ok := val.(*TenantInfo); ok {
+		if info, ok := val.(*UserInfo); ok {
 			// TODO check expired
 			return info, nil
 		}
@@ -99,14 +112,14 @@ func (a *AuthExtension) parseToken(tokenStr string) (*TenantInfo, error) {
 		return nil, fmt.Errorf("invalid JWT: %w", err)
 	}
 
-	var res TenantInfo
+	var res UserInfo
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if tenant, ok := claims["tenant"].(map[string]any); ok {
 			if tID, ok := tenant["tenant_id"].(string); ok {
-				res.TenantID = tID
+				res.Tenant.TenantID = tID
 			}
 			if aID, ok := tenant["account_id"].(float64); ok {
-				res.AccountID = strconv.FormatInt(int64(aID), 10)
+				res.Tenant.AccountID = uint32(aID)
 			}
 		}
 	}
@@ -114,7 +127,7 @@ func (a *AuthExtension) parseToken(tokenStr string) (*TenantInfo, error) {
 	return &res, nil
 }
 
-func WithTenant(ctx context.Context, tenant *TenantInfo) context.Context {
+func WithTenant(ctx context.Context, tenant *UserInfo) context.Context {
 	ctx = context.WithValue(ctx, tenantKey, tenant)
 	return ctx
 }

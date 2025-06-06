@@ -14,7 +14,7 @@ type multiTenantCache struct {
 }
 
 func (mc *multiTenantCache) GetCache(
-	tenant tenancy.TenantInfo,
+	tenant tenancy.UserInfo,
 	cfg *config.ClickHouseConfig,
 	tableTTLs map[string]uint,
 	tableHash map[string]string,
@@ -22,7 +22,7 @@ func (mc *multiTenantCache) GetCache(
 	var c *cache
 	cachePtr, find := mc.caches.Load(tenant)
 	if !find {
-		db := tenantDB(tenant.TenantID, cfg)
+		db := tenantDB(tenant.Tenant.TenantID, cfg)
 		init := NewClickHouseInit(
 			cfg.Endpoint,
 			db,

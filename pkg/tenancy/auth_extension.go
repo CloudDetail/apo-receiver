@@ -5,8 +5,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/CloudDetail/apo-receiver/pkg/config"
@@ -19,16 +22,25 @@ const (
 	// accountIDKey = tenantCtxKey("__account_id__")
 
 	tenantKey = tenantCtxKey("__tenant__")
+
+	userInfoHeader = "X-Userinfo"
 )
 
-var emptyTenant = TenantInfo{
-	TenantID:  "",
-	AccountID: "",
+var emptyTenant = UserInfo{
+	Sub: "",
+	Tenant: Tentant{
+		TenantID:  "",
+		AccountID: 0,
+	},
 }
 
-var systemTenant = TenantInfo{
-	TenantID:  "__SYSTEM__",
-	AccountID: "multitenant",
+var systemTenant = UserInfo{
+	Sub: "",
+	Tenant: Tentant{
+		TenantID:    "__SYSTEM__",
+		AccountID:   0,
+		Multitenant: true,
+	},
 }
 
 type AuthExtension struct {
@@ -37,6 +49,8 @@ type AuthExtension struct {
 	jwtCache sync.Map
 
 	publicKey *rsa.PublicKey
+
+	base http.RoundTripper
 }
 
 func NewAuthExtension(cfg *config.TenancyConfig) (*AuthExtension, error) {
@@ -59,7 +73,23 @@ func NewAuthExtension(cfg *config.TenancyConfig) (*AuthExtension, error) {
 	return &AuthExtension{
 		cfg:       cfg,
 		publicKey: publicKey,
+		base:      http.DefaultTransport,
 	}, nil
+}
+
+func (a *AuthExtension) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	userInfo := GetTenant(req.Context())
+
+	jsonBytes, err := json.Marshal(userInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
+	req.Header.Set(userInfoHeader, encoded)
+
+	return a.base.RoundTrip(req2)
 }
 
 func parsePublicKey(keyStr string) (*rsa.PublicKey, error) {
@@ -88,18 +118,18 @@ func GetTenantID(ctx context.Context) string {
 	if val == nil {
 		return ""
 	}
-	if tenant, ok := val.(*TenantInfo); ok {
-		return tenant.TenantID
+	if tenant, ok := val.(*UserInfo); ok {
+		return tenant.Tenant.TenantID
 	}
 	return ""
 }
 
-func GetTenant(ctx context.Context) TenantInfo {
+func GetTenant(ctx context.Context) UserInfo {
 	val := ctx.Value(tenantKey)
 	if val == nil {
 		return emptyTenant
 	}
-	if tenant, ok := val.(*TenantInfo); ok {
+	if tenant, ok := val.(*UserInfo); ok {
 		return *tenant
 	}
 	return emptyTenant
@@ -110,8 +140,12 @@ func GetAccountID(ctx context.Context) string {
 	if val == nil {
 		return ""
 	}
-	if tenant, ok := val.(*TenantInfo); ok {
-		return tenant.AccountID
+	if tenant, ok := val.(*UserInfo); ok {
+		if tenant.Tenant.Multitenant {
+			return "multitenant"
+		}
+		accountID := uint64(tenant.Tenant.AccountID)
+		return strconv.FormatUint(accountID, 10)
 	}
 	return ""
 }

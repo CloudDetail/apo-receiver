@@ -54,6 +54,12 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("fail to read configuration: %w", err)
 	}
 
+	tenancyCfg := &cfg.TenancyCfg
+	authExtension, err := tenancy.NewAuthExtension(tenancyCfg)
+	if err != nil {
+		return fmt.Errorf("fail to create authExtension: %w", err)
+	}
+
 	redisCfg := &cfg.RedisCfg
 	if cfg.RedisCfg.Enable {
 		redisClient, err := redis.NewRedisClient(redisCfg.Address, redisCfg.Password, redisCfg.ExpireTime)
@@ -67,9 +73,16 @@ func Run(ctx context.Context) error {
 	global.CACHE.Start()
 
 	analyzerCfg := &cfg.AnalyzerCfg
-	global.TRACE_CLIENT = client.NewApmTraceClient(
+	traceAPI := client.NewAdapterHTTPClient(
 		analyzerCfg.TraceAddress,
 		analyzerCfg.Timeout,
+	)
+	if cfg.TenancyCfg.Enabled {
+		traceAPI.SetRountTriper(authExtension)
+	}
+
+	global.TRACE_CLIENT = client.NewApmTraceClientByAPI(
+		traceAPI,
 		analyzerCfg.RatioThreshold,
 		analyzerCfg.MuateNodeMode,
 		analyzerCfg.GetDetailTypes)
@@ -119,12 +132,6 @@ func Run(ctx context.Context) error {
 
 	k8sCfg := &cfg.K8sCfg
 	startMetadataFetch(k8sCfg)
-
-	tenancyCfg := &cfg.TenancyCfg
-	authExtension, err := tenancy.NewAuthExtension(tenancyCfg)
-	if err != nil {
-		return fmt.Errorf("fail to create authExtension: %w", err)
-	}
 
 	sampleCfg := &cfg.SampleConfig
 	profileCfg := &cfg.ProfileCfg

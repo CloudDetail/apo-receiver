@@ -9,11 +9,11 @@ import (
 var TenantCache *tenantCache // traceID -> tenant
 
 type tenantCache struct {
-	cache *lru.Cache[string, TenantInfo] // traceID -> tenant
+	cache *lru.Cache[string, UserInfo] // traceID -> tenant
 }
 
 func init() {
-	cache, err := lru.New[string, TenantInfo](10000)
+	cache, err := lru.New[string, UserInfo](10000)
 	if err != nil {
 
 	}
@@ -27,7 +27,7 @@ func (t *tenantCache) StoreTenantFromCtx(traceID string, ctx context.Context) {
 	t.StoreTenant(traceID, tenantInfo)
 }
 
-func (t *tenantCache) StoreTenant(traceID string, tenant TenantInfo) {
+func (t *tenantCache) StoreTenant(traceID string, tenant UserInfo) {
 	t.cache.Add(traceID, tenant)
 }
 func (t *tenantCache) UpdateLastUsed(traceID string) {
@@ -35,7 +35,7 @@ func (t *tenantCache) UpdateLastUsed(traceID string) {
 	t.cache.Get(traceID)
 }
 
-func (t *tenantCache) GetTenant(traceID string) (TenantInfo, bool) {
+func (t *tenantCache) GetTenant(traceID string) (UserInfo, bool) {
 	return t.cache.Get(traceID)
 }
 

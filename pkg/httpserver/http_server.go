@@ -113,7 +113,7 @@ func realtimeSlowReport(ctx iris.Context) {
 		return
 	}
 
-	result, clientCalls, err := global.TRACE_CLIENT.QueryMutatedSlowTraceTree(traceId, traces)
+	result, clientCalls, err := global.TRACE_CLIENT.QueryMutatedSlowTraceTreeWithCtx(ctx, traceId, traces)
 	if err != nil {
 		responseWithError(ctx, err)
 		return
@@ -134,7 +134,7 @@ func realtimeErrorReport(ctx iris.Context) {
 		return
 	}
 
-	result, err := global.TRACE_CLIENT.QueryErrorTraceTree(traceId, traces)
+	result, err := global.TRACE_CLIENT.QueryErrorTraceTreeWithCtx(ctx, traceId, traces)
 	if err != nil {
 		responseWithError(ctx, err)
 		return
@@ -146,8 +146,7 @@ func realtimeErrorReport(ctx iris.Context) {
 }
 
 func getPromMetrics(ctx iris.Context) {
-	tenant := tenancy.GetTenant(ctx)
-	metrics.GetMetrics(tenant.AccountID, ctx.ResponseWriter())
+	metrics.GetMetrics(tenancy.GetAccountID(ctx), ctx.ResponseWriter())
 }
 
 func responseWithError(ctx iris.Context, err error) {

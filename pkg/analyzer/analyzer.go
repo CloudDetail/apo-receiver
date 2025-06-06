@@ -165,7 +165,7 @@ func (analyzer *ReportAnalyzer) CacheTrace(ctx context.Context, traceJson string
 func (analyzer *ReportAnalyzer) Consume(traceId string) {
 	ctx, _ := tenancy.TenantCache.GetTenantCtx(context.Background(), traceId)
 	tenant := tenancy.GetTenant(ctx)
-	traces := getTracesFromCache(tenant.AccountID, traceId)
+	traces := getTracesFromCache(tenant.GetAccountID(), traceId)
 	if analyzer.missTopTime <= 0 && traces.RootTrace == nil {
 		log.Printf("[x Miss RootTrace] TraceId: %s", traceId)
 		return
@@ -265,7 +265,7 @@ func (analyzer *ReportAnalyzer) processTask(task *traceTask) {
 		metricCount := global.CACHE.GetMetricSize(traces.TraceId)
 		if traceCount > traces.GetTraceCount() || metricCount > traces.MetricCount {
 			// Update New Traces.
-			mergeTraces(ctx, task.traces, getTracesFromCache(task.tenant.AccountID, traces.TraceId))
+			mergeTraces(ctx, task.traces, getTracesFromCache(task.tenant.GetAccountID(), traces.TraceId))
 		}
 	}
 
@@ -368,11 +368,11 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(ctx context.Context, serv
 func (analyzer *ReportAnalyzer) generateErrorReport(ctx context.Context, apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
 	apmErrorTree := apmclient.ConvertErrorTree(spanTrace)
 	// [Fix for Arms] Add all error nodes.
-	if global.TRACE_CLIENT.NeedGetDetailSpan(apmType) {
+	if global.TRACE_CLIENT.NeedGetDetailSpanWithCtx(ctx, apmType) {
 		for spanId, errorNode := range apmErrorTree.NodeMap {
 			if errorNode.IsError && errorNode.IsSampled {
 				if node := spanTrace.GetServiceNode(spanId); node != nil {
-					if err := global.TRACE_CLIENT.FillMutatedSpan(apmType, traces.TraceId, node); err != nil {
+					if err := global.TRACE_CLIENT.FillMutatedSpanWithCtx(ctx, apmType, traces.TraceId, node); err != nil {
 						return true, err
 					}
 					errorNode.ErrorSpans = apmclient.GetErrorSpans(node)
@@ -536,8 +536,8 @@ func (analyzer *ReportAnalyzer) generateSlowReport(ctx context.Context, apmType 
 	}
 
 	// [FIX Arms] Add Spans for Clients and Excpetions
-	if global.TRACE_CLIENT.NeedGetDetailSpan(apmType) {
-		if err := global.TRACE_CLIENT.FillMutatedSpan(apmType, traces.TraceId, spanTrace.GetServiceNode(mutatedTrace.SpanId)); err != nil {
+	if global.TRACE_CLIENT.NeedGetDetailSpanWithCtx(ctx, apmType) {
+		if err := global.TRACE_CLIENT.FillMutatedSpanWithCtx(ctx, apmType, traces.TraceId, spanTrace.GetServiceNode(mutatedTrace.SpanId)); err != nil {
 			return true, err
 		}
 	}
@@ -716,7 +716,7 @@ func (analyzer *ReportAnalyzer) checkTask() {
 }
 
 func (analyzer *ReportAnalyzer) queryServices(ctx context.Context, apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(apmType, traceId, rootTrace)
+	serviceNodes, err := global.TRACE_CLIENT.QueryServicesWithCtx(ctx, apmType, traceId, rootTrace)
 	// Record Metric
 
 	accountID := tenancy.GetAccountID(ctx)
@@ -807,7 +807,7 @@ func (pool *taskPool) getToProcessTasks(checkTime int64) []*traceTask {
 }
 
 type traceTask struct {
-	tenant tenancy.TenantInfo
+	tenant tenancy.UserInfo
 
 	traces      *model.Traces
 	reportType  report.ReportType
@@ -816,7 +816,7 @@ type traceTask struct {
 	ignoreRetry bool
 }
 
-func newSlowTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
+func newSlowTraceTask(tenant tenancy.UserInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
 		tenant:      tenant,
 		traces:      traces,
@@ -826,7 +826,7 @@ func newSlowTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRet
 	}
 }
 
-func newErrorTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
+func newErrorTraceTask(tenant tenancy.UserInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
 		tenant:      tenant,
 		traces:      traces,
@@ -836,7 +836,7 @@ func newErrorTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRe
 	}
 }
 
-func newNormalTraceTask(tenant tenancy.TenantInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
+func newNormalTraceTask(tenant tenancy.UserInfo, traces *model.Traces, ignoreRetry bool) *traceTask {
 	return &traceTask{
 		tenant:      tenant,
 		traces:      traces,

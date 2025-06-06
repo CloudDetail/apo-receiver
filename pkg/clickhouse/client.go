@@ -110,7 +110,7 @@ func (client *ClickHouseClient) StoreAgentEvent(ctx context.Context, agentEvent 
 }
 
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {
-	database := tenantDB(tenancy.GetTenant(ctx).TenantID, client.cfg)
+	database := tenantDB(tenancy.GetTenantID(ctx), client.cfg)
 	return tables.QueryTraces(ctx, database, client.Conn, traceId)
 }
 
@@ -142,9 +142,9 @@ func (client *ClickHouseClient) batchSendToServer() {
 			}
 			client.multiTenantCache.caches.Range(func(k, v interface{}) bool {
 				cache := v.(*cache)
-				tenant := k.(tenancy.TenantInfo)
-				database := tenantDB(tenant.TenantID, client.cfg)
-				client.flushCache(ctx, database, tenant.AccountID, cache)
+				tenant := k.(tenancy.UserInfo)
+				database := tenantDB(tenant.Tenant.TenantID, client.cfg)
+				client.flushCache(ctx, database, tenant.GetAccountID(), cache)
 				return true
 			})
 		case <-client.stopChan:

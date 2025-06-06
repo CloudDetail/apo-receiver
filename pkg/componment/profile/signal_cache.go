@@ -67,7 +67,7 @@ func (signals *SignalsCache) CollectMetrics() {
 		case <-timer.C:
 			signals.tenantMap.Range(func(key, value any) bool {
 				sMap := value.(*SignalsMap)
-				tenant := key.(tenancy.TenantInfo)
+				tenant := key.(tenancy.UserInfo)
 				ctx := tenancy.WithTenant(context.Background(), &tenant)
 				sMap.cache.Range(func(k, v interface{}) bool {
 					countMetrics := v.(*SignalCache).collectCountMetrics()

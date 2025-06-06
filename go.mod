@@ -4,7 +4,7 @@ go 1.21.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.26.0
-	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250606085954-c3da79f228d7
 	github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc
