@@ -87,7 +87,7 @@ func (a *AuthExtension) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	encoded := base64.StdEncoding.EncodeToString(jsonBytes)
-	req.Header.Set(userInfoHeader, encoded)
+	req2.Header.Set(userInfoHeader, encoded)
 
 	return a.base.RoundTrip(req2)
 }
