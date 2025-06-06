@@ -52,8 +52,8 @@ func NewVmPusher(pushURL string, collectMetricsFn func(accountID string, w io.Wr
 
 const (
 	// prometheusRemoteWrite
-	// https://<vminsert-addr>/insert/{TENANT_ID}/prometheus/api/v1/import/prometheus
-	TenantIDPlaceholder = "{TENANT_ID}"
+	// https://<vminsert-addr>/insert/:accountID/prometheus/api/v1/import/prometheus
+	AccountIDPlaceholder = ":accountID"
 )
 
 func (pc *VmPusher) SendMetrics(ctx context.Context, accountID string) error {
@@ -82,7 +82,7 @@ func (pc *VmPusher) SendMetrics(ctx context.Context, accountID string) error {
 
 	url := *pc.pushURL
 	if len(accountID) > 0 {
-		url.Path = strings.ReplaceAll(url.Path, TenantIDPlaceholder, accountID)
+		url.Path = strings.ReplaceAll(url.Path, AccountIDPlaceholder, accountID)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, pc.method, url.String(), reqBody)
