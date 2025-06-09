@@ -4,15 +4,18 @@ go 1.21.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.26.0
-	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250326032139-c96a724395fc
+	github.com/CloudDetail/apo-module/apm/client v0.0.0-20250606085954-c3da79f228d7
 	github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/apo-module/slo/sdk v0.0.0-20250326032139-c96a724395fc
 	github.com/CloudDetail/metadata v0.0.0-20241129101557-10d59745e7b7
+	github.com/cespare/xxhash v1.1.0
 	github.com/go-redis/redis/v8 v8.11.5
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/snappy v0.0.4
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kataras/iris/v12 v12.2.8
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/client_model v0.5.0
@@ -52,7 +55,6 @@ require (
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/imdario/mergo v0.3.6 // indirect
 	github.com/iris-contrib/schema v0.0.6 // indirect

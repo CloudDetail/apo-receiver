@@ -31,10 +31,18 @@ const (
 )
 
 var (
-	registeredMetrics = make(map[*model.MetricDef]*lruMetrics) // <name, lruMetrics>
-	registeredLock    sync.Mutex
-	metricConfig      *MetricConfig
+	tenantScopeRegisteredMetrics sync.Map // string -> *registeredMetrics
+
+	tenantLock sync.RWMutex
+
+	// registeredMetrics            = make(map[*model.MetricDef]*lruMetrics) // <name, lruMetrics>
+	registeredLock sync.Mutex
+	metricConfig   *MetricConfig
 )
+
+type registeredMetricsMap struct {
+	registered map[*model.MetricDef]*lruMetrics
+}
 
 func init() {
 	metricConfig = newMetricConfig("vm", 10000, []time.Duration{})
@@ -66,8 +74,19 @@ func newMetricConfig(promType string, cacheSize int, durationBuckets []time.Dura
 	}
 }
 
-func UpdateMetric(metricDef *model.MetricDef, labelValues []string, value float64) error {
-	existMetrics, found := registeredMetrics[metricDef]
+func UpdateMetric(accoundID string, metricDef *model.MetricDef, labelValues []string, value float64) error {
+	var registeredMetrics *registeredMetricsMap
+	metrics, found := tenantScopeRegisteredMetrics.Load(accoundID)
+	if !found {
+		registeredMetrics = &registeredMetricsMap{
+			registered: make(map[*model.MetricDef]*lruMetrics),
+		}
+		tenantScopeRegisteredMetrics.Store(accoundID, registeredMetrics)
+	} else {
+		registeredMetrics = metrics.(*registeredMetricsMap)
+	}
+
+	existMetrics, found := registeredMetrics.registered[metricDef]
 	if !found {
 		labelsToTags, err := model.NewCache[string, struct{}](metricConfig.cacheSize)
 		if err != nil {
@@ -79,7 +98,7 @@ func UpdateMetric(metricDef *model.MetricDef, labelValues []string, value float6
 			labelsToTags: labelsToTags,
 		}
 		registeredLock.Lock()
-		registeredMetrics[metricDef] = existMetrics
+		registeredMetrics.registered[metricDef] = existMetrics
 		registeredLock.Unlock()
 	}
 
@@ -113,8 +132,15 @@ func UpdateMetric(metricDef *model.MetricDef, labelValues []string, value float6
 	return nil
 }
 
-func GetMetrics(w io.Writer) {
-	for metricDef, lru := range registeredMetrics {
+func GetMetrics(accountID string, w io.Writer) {
+	rPtr, find := tenantScopeRegisteredMetrics.Load(accountID)
+	if !find {
+		return
+	}
+
+	registeredMetrics := rPtr.(*registeredMetricsMap)
+
+	for metricDef, lru := range registeredMetrics.registered {
 		lru.lock.Lock()
 		if len(lru.datas) > 0 {
 			metricDef.WriteHead(w)
@@ -139,27 +165,33 @@ func GetMetrics(w io.Writer) {
 func BuildPromWriteRequest() *pb.WriteRequest {
 	ts := time.Now().UnixMilli()
 	timeSeries := make([]*pb.TimeSeries, 0)
-	for metricDef, lru := range registeredMetrics {
-		lru.lock.Lock()
-		if len(lru.datas) > 0 {
-			for labelKey, metric := range lru.datas {
-				if promMetric, ok := metric.(PromMetric); ok {
-					if err := promMetric.ExportTimeSeries(ts, &timeSeries); err != nil {
-						log.Printf("[x Build PromMetrics] Name: %s, Key: %s, Error: %s", metricDef.Name, labelKey, err.Error())
+
+	tenantScopeRegisteredMetrics.Range(func(_, value any) bool {
+		registeredMetrics := value.(*registeredMetricsMap)
+		for metricDef, lru := range registeredMetrics.registered {
+			lru.lock.Lock()
+			if len(lru.datas) > 0 {
+				for labelKey, metric := range lru.datas {
+					if promMetric, ok := metric.(PromMetric); ok {
+						if err := promMetric.ExportTimeSeries(ts, &timeSeries); err != nil {
+							log.Printf("[x Build PromMetrics] Name: %s, Key: %s, Error: %s", metricDef.Name, labelKey, err.Error())
+						}
+					}
+				}
+				lru.labelsToTags.RemoveEvictedItems()
+
+				for key := range lru.datas {
+					if !lru.labelsToTags.Contains(key) {
+						log.Printf("[Clear Expire HistogramKey] Name: %s, Key: %s", metricDef.Name, key)
+						delete(lru.datas, key)
 					}
 				}
 			}
-			lru.labelsToTags.RemoveEvictedItems()
-
-			for key := range lru.datas {
-				if !lru.labelsToTags.Contains(key) {
-					log.Printf("[Clear Expire HistogramKey] Name: %s, Key: %s", metricDef.Name, key)
-					delete(lru.datas, key)
-				}
-			}
+			lru.lock.Unlock()
 		}
-		lru.lock.Unlock()
-	}
+		return true
+	})
+
 	if len(timeSeries) == 0 {
 		return nil
 	}

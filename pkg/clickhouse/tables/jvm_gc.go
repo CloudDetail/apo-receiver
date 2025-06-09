@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertJvmGcSQL = `INSERT INTO jvm_gc (
+	insertJvmGcSQL = `INSERT INTO "%s".jvm_gc (
 		timestamp,
 		pid,
 		labels,
@@ -51,19 +51,18 @@ type JvmGcInfo struct {
 	Timestamp        uint64 `json:"timestamp"`
 }
 
-func WriteJvmGcs(ctx context.Context, conn *sql.DB, toSends []string) error {
+func WriteJvmGcs(ctx context.Context, database string, conn *sql.DB, toSends []string) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertJvmGcSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertJvmGcSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, jvmGcJson := range toSends {
 			jvmGc := &JvmGcInfo{}
 			if err := json.Unmarshal([]byte(jvmGcJson), jvmGc); err != nil {

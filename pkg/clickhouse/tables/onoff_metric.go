@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertOnoffMetricSQL = `INSERT INTO onoff_metric (
+	insertOnoffMetricSQL = `INSERT INTO "%s".onoff_metric (
 		timestamp,
 		pid,
 		tid,
@@ -38,18 +38,17 @@ type OnOffMetric struct {
 	Metrics     string `json:"metrics"`
 }
 
-func WriteOnOffMetrics(ctx context.Context, conn *sql.DB, toSends []string) error {
+func WriteOnOffMetrics(ctx context.Context, database string, conn *sql.DB, toSends []string) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertOnoffMetricSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertOnoffMetricSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, onoffJson := range toSends {
 			onOffMetric := &OnOffMetric{}
 			if err := json.Unmarshal([]byte(onoffJson), onOffMetric); err != nil {

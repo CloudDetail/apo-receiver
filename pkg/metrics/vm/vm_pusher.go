@@ -9,21 +9,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 )
 
 type VmPusher struct {
 	pushURL            *url.URL
 	method             string
-	pushURLRedacted    string
 	headers            http.Header
 	disableCompression bool
 
 	client           *http.Client
-	collectMetricsFn func(w io.Writer)
+	collectMetricsFn func(accountID string, w io.Writer)
 }
 
-func NewVmPusher(pushURL string, collectMetricsFn func(w io.Writer)) (*VmPusher, error) {
+func NewVmPusher(pushURL string, collectMetricsFn func(accountID string, w io.Writer)) (*VmPusher, error) {
 	// validate pushURL
 	pu, err := url.Parse(pushURL)
 	if err != nil {
@@ -39,12 +39,10 @@ func NewVmPusher(pushURL string, collectMetricsFn func(w io.Writer)) (*VmPusher,
 	method := http.MethodGet
 	// validate Headers
 	headers := make(http.Header)
-	pushURLRedacted := pu.Redacted()
 	client := &http.Client{}
 	return &VmPusher{
 		pushURL:            pu,
 		method:             method,
-		pushURLRedacted:    pushURLRedacted,
 		headers:            headers,
 		disableCompression: false,
 		client:             client,
@@ -52,11 +50,17 @@ func NewVmPusher(pushURL string, collectMetricsFn func(w io.Writer)) (*VmPusher,
 	}, nil
 }
 
-func (pc *VmPusher) SendMetrics(ctx context.Context) error {
+const (
+	// prometheusRemoteWrite
+	// https://<vminsert-addr>/insert/:accountID/prometheus/api/v1/import/prometheus
+	AccountIDPlaceholder = ":accountID"
+)
+
+func (pc *VmPusher) SendMetrics(ctx context.Context, accountID string) error {
 	bb := getBytesBuffer()
 	defer putBytesBuffer(bb)
 
-	pc.collectMetricsFn(bb)
+	pc.collectMetricsFn(accountID, bb)
 
 	if !pc.disableCompression {
 		bbTmp := getBytesBuffer()
@@ -75,9 +79,16 @@ func (pc *VmPusher) SendMetrics(ctx context.Context) error {
 
 	// Prepare the request to sent to pc.pushURL
 	reqBody := bytes.NewReader(bb.B)
-	req, err := http.NewRequestWithContext(ctx, pc.method, pc.pushURL.String(), reqBody)
+
+	url := *pc.pushURL
+	if len(accountID) > 0 {
+		url.Path = strings.ReplaceAll(url.Path, AccountIDPlaceholder, accountID)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, pc.method, url.String(), reqBody)
 	if err != nil {
-		return fmt.Errorf("metrics.push: cannot initialize request for metrics push to %q: %w", pc.pushURLRedacted, err)
+		redactedURL := url.Redacted()
+		return fmt.Errorf("metrics.push: cannot initialize request for metrics push to %q: %w", redactedURL, err)
 	}
 
 	req.Header.Set("Content-Type", "text/plain")
@@ -94,15 +105,17 @@ func (pc *VmPusher) SendMetrics(ctx context.Context) error {
 	// Perform the request
 	resp, err := pc.client.Do(req)
 	if err != nil {
+		redactedURL := url.Redacted()
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
-		return fmt.Errorf("cannot push metrics to %q: %s", pc.pushURLRedacted, err)
+		return fmt.Errorf("cannot push metrics to %q: %s", redactedURL, err)
 	}
 	if resp.StatusCode/100 != 2 {
+		redactedURL := url.Redacted()
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return fmt.Errorf("unexpected status code in response from %q: %d; expecting 2xx; response body: %q", pc.pushURLRedacted, resp.StatusCode, body)
+		return fmt.Errorf("unexpected status code in response from %q: %d; expecting 2xx; response body: %q", redactedURL, resp.StatusCode, body)
 	}
 	_ = resp.Body.Close()
 	return nil

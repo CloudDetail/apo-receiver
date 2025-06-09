@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	insertAgentEventSQL = `INSERT INTO originx_agent_event (
+	insertAgentEventSQL = `INSERT INTO "%s".originx_agent_event (
 		timestamp,
 		name,
 		pid,
@@ -25,18 +25,17 @@ const (
 	)`
 )
 
-func WriteAgentEvents(ctx context.Context, conn *sql.DB, toSends []*model.AgentEvent) error {
+func WriteAgentEvents(ctx context.Context, database string, conn *sql.DB, toSends []*model.AgentEvent) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertAgentEventSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertAgentEventSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, toSend := range toSends {
 			_, err = statement.ExecContext(ctx,
 				time.Unix(int64(toSend.Timestamp), 0).UTC(),

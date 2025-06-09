@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
 	"log"
 	"net"
 	"os"
@@ -13,6 +12,9 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+
+	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
+	"github.com/CloudDetail/apo-receiver/pkg/tenancy"
 
 	"github.com/CloudDetail/apo-receiver/pkg/componment/ebpffile"
 	"github.com/CloudDetail/apo-receiver/pkg/componment/redis"
@@ -45,12 +47,21 @@ func Run(ctx context.Context) error {
 	// Initialize flags
 	configPath := flag.String("config", "receiver-config.yml", "Configuration file")
 	flag.Parse()
-	receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, err := readInConfig(*configPath)
+
+	cfg, err := readInConfigNew(*configPath)
+	// receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, err := readInConfig(*configPath)
 	if err != nil {
 		return fmt.Errorf("fail to read configuration: %w", err)
 	}
 
-	if redisCfg.Enable {
+	tenancyCfg := &cfg.TenancyCfg
+	authExtension, err := tenancy.NewAuthExtension(tenancyCfg)
+	if err != nil {
+		return fmt.Errorf("fail to create authExtension: %w", err)
+	}
+
+	redisCfg := &cfg.RedisCfg
+	if cfg.RedisCfg.Enable {
 		redisClient, err := redis.NewRedisClient(redisCfg.Address, redisCfg.Password, redisCfg.ExpireTime)
 		if err != nil {
 			return fmt.Errorf("fail to create redis client: %w", err)
@@ -61,20 +72,22 @@ func Run(ctx context.Context) error {
 	}
 	global.CACHE.Start()
 
-	global.TRACE_CLIENT = client.NewApmTraceClient(
+	analyzerCfg := &cfg.AnalyzerCfg
+	traceAPI := client.NewAdapterHTTPClient(
 		analyzerCfg.TraceAddress,
 		analyzerCfg.Timeout,
+	)
+	if cfg.TenancyCfg.Enabled {
+		traceAPI.SetRountTriper(authExtension)
+	}
+
+	global.TRACE_CLIENT = client.NewApmTraceClientByAPI(
+		traceAPI,
 		analyzerCfg.RatioThreshold,
 		analyzerCfg.MuateNodeMode,
 		analyzerCfg.GetDetailTypes)
 
-	clickHouseClient, err := clickhouse.NewClickHouseClient(ctx, clickHouseCfg, prometheusCfg.GenerateClientMetric, prometheusCfg.ClientMetricWithUrl)
-	if err != nil {
-		return fmt.Errorf("fail to create ClickHouse client: %w", err)
-	}
-	global.CLICK_HOUSE = clickHouseClient
-	clickHouseClient.Start()
-
+	prometheusCfg := &cfg.PrometheusCfg
 	if len(prometheusCfg.LatencyHistogramBuckets) == 0 && prometheusCfg.Storage == "prom" && prometheusCfg.GenerateClientMetric {
 		return errors.New("miss latency_histogram_buckets for promethues")
 	}
@@ -87,8 +100,27 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("fail to create Prometheus client: %w", err)
 	}
 	log.Printf("Use the prometheus address %v", prometheusCfg.Address)
+
+	if cfg.TenancyCfg.Enabled {
+		if prometheusCfg.Storage != "vm" {
+			return errors.New("prometheus storage must be vm when tenancy is enabled")
+		}
+		prometheusClient = &tenancy.TenantClient{
+			Client: prometheusClient,
+		}
+	}
+
 	prometheusV1Api := v1.NewAPI(prometheusClient)
 
+	clickHouseCfg := &cfg.ClickHouseCfg
+	clickHouseClient, err := clickhouse.NewClickHouseClient(ctx, clickHouseCfg, prometheusCfg.GenerateClientMetric, prometheusCfg.ClientMetricWithUrl, cfg.TenancyCfg.Enabled)
+	if err != nil {
+		return fmt.Errorf("fail to create ClickHouse client: %w", err)
+	}
+	global.CLICK_HOUSE = clickHouseClient
+	clickHouseClient.Start()
+
+	receiverCfg := &cfg.ReceiverCfg
 	portalClient := httphelper.CreateHttpClient(receiverCfg.PortalAddress != "", receiverCfg.PortalAddress)
 	slomanager.InitDefaultSLOConfigCache(receiverCfg.CenterApiServer, portalClient, prometheusCfg.Address)
 
@@ -98,20 +130,23 @@ func Run(ctx context.Context) error {
 	onoffmetric.CacheInstance = onoffmetric.NewMetricCache(prometheusV1Api)
 	onoffmetric.CacheInstance.Start()
 
+	k8sCfg := &cfg.K8sCfg
 	startMetadataFetch(k8sCfg)
 
+	sampleCfg := &cfg.SampleConfig
+	profileCfg := &cfg.ProfileCfg
 	// Start gRPC server
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		startGrpcServer(receiverCfg, sampleCfg, profileCfg, analyzerCfg, threshold.CacheInstance, prometheusV1Api)
+		startGrpcServer(receiverCfg, sampleCfg, profileCfg, analyzerCfg, threshold.CacheInstance, prometheusV1Api, authExtension)
 	}()
 	// Start HTTP server
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		httpserver.StartHttpServer(receiverCfg.HttpPort, prometheusCfg.OpenApiMetrics)
+		httpserver.StartHttpServer(receiverCfg.HttpPort, prometheusCfg.OpenApiMetrics, authExtension)
 	}()
 	if prometheusCfg.SendApi != "" && prometheusCfg.SendInterval > 0 {
 		promSendAddress := prometheusCfg.SendAddress
@@ -124,6 +159,14 @@ func Run(ctx context.Context) error {
 			// fix for earlier version.
 			promRemoteWriteType = prometheusCfg.Storage
 		}
+
+		if tenancyCfg.Enabled {
+			if prometheusCfg.Storage != "vm" {
+				return errors.New("prometheus storage must be vm when tenancy is enabled")
+			}
+			prometheusCfg.SendApi = fmt.Sprintf("%s%s", `/insert/:accountID/prometheus`, prometheusCfg.SendApi)
+		}
+
 		if err := metrics.InitMetricSend(fmt.Sprintf("%s%s", promSendAddress, prometheusCfg.SendApi), prometheusCfg.SendInterval, promRemoteWriteType); err != nil {
 			return err
 		}
@@ -133,6 +176,19 @@ func Run(ctx context.Context) error {
 	wg.Wait()
 	log.Println("All servers shut down gracefully")
 	return nil
+}
+
+func readInConfigNew(path string) (*config.Config, error) {
+	viper := viper.New()
+	viper.SetConfigFile(path)
+	err := viper.ReadInConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	config := &config.Config{}
+	_ = viper.Unmarshal(config)
+	return config, nil
 }
 
 func readInConfig(path string) (*config.ReceiverConfig, *config.SampleConfig, *config.ProfileConfig, *config.PrometheusConfig, *config.ClickHouseConfig, *config.AnalyzerConfig, *config.RedisConfig, *config.K8sConfig, error) {
@@ -175,13 +231,24 @@ func startGrpcServer(
 	profileCfg *config.ProfileConfig,
 	analyzerCfg *config.AnalyzerConfig,
 	thresholdCache *threshold.ThresholdCache,
-	promClient v1.API) {
+	promClient v1.API,
+	authExtension *tenancy.AuthExtension,
+) {
 	listen, err := net.Listen("tcp", ":"+strconv.Itoa(receiverCfg.GrpcPort))
 	if err != nil {
 		log.Fatalf("Fail to listen Grpc Port: %v\n", err)
 	}
 
-	server := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+
+	if authExtension != nil {
+		grpcOpts = append(grpcOpts,
+			grpc.StreamInterceptor(authExtension.NewGuardingStreamInterceptor()),
+			grpc.UnaryInterceptor(authExtension.NewGuardingUnaryInterceptor()),
+		)
+	}
+
+	server := grpc.NewServer(grpcOpts...)
 
 	sampleServer := trace.NewSampleServer(sampleCfg.Enable, sampleCfg.MinSample, sampleCfg.InitSample, sampleCfg.MaxSample, sampleCfg.ResetSamplePeriod)
 	model.RegisterSampleServiceServer(server, sampleServer)

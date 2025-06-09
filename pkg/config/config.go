@@ -7,13 +7,16 @@ import (
 )
 
 type Config struct {
-	ReceiverCfg   *ReceiverConfig
-	ProfileCfg    *ProfileConfig
-	PrometheusCfg *PrometheusConfig
-	ClickHouseCfg *ClickHouseConfig
-	AnalyzerCfg   *AnalyzerConfig
-	RedisCfg      *RedisConfig
-	K8sCfg        *K8sConfig
+	ReceiverCfg   ReceiverConfig   `mapstructure:"receiver"`
+	ProfileCfg    ProfileConfig    `mapstructure:"profile"`
+	PrometheusCfg PrometheusConfig `mapstructure:"prometheus"`
+	ClickHouseCfg ClickHouseConfig `mapstructure:"clickhouse"`
+	AnalyzerCfg   AnalyzerConfig   `mapstructure:"analyzer"`
+	RedisCfg      RedisConfig      `mapstructure:"redis"`
+	K8sCfg        K8sConfig        `mapstructure:"k8s"`
+	SampleConfig  SampleConfig     `mapstructure:"sample"`
+
+	TenancyCfg TenancyConfig `mapstructure:"tenancy"`
 }
 
 type ReceiverConfig struct {
@@ -81,6 +84,9 @@ type ClickHouseConfig struct {
 	// If Not set will be set to 5.
 	FlushSeconds        uint `mapstructure:"flush_seconds"`
 	ExportServiceClient bool `mapstructure:"export_service_client"`
+
+	TenantDBPattern string            `mapstructure:"tenant_db_pattern"`
+	TenantDBMap     map[string]string `mapstructure:"tenant_db_map"`
 }
 
 type TTLConfig struct {
@@ -121,4 +127,11 @@ type K8sConfig struct {
 	APIType string `mapstructure:"api_type"` // meta_server
 
 	MetaServerConfig *metaconfigs.MetaSourceConfig `mapstructure:"meta_server_config"`
+}
+
+type TenancyConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	Header    string `mapstructure:"header"`
+	Scheme    string `mapstructure:"scheme"`
+	PublicKey string `mapstructure:"public_key"`
 }

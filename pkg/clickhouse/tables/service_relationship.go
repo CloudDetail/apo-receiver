@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertServiceRelationShipSQL = `INSERT INTO service_relationship (
+	insertServiceRelationShipSQL = `INSERT INTO "%s".service_relationship (
 		timestamp,
 		entry_service,
 		entry_url,
@@ -38,18 +38,17 @@ const (
 	)`
 )
 
-func WriteServiceRelationships(ctx context.Context, conn *sql.DB, toSends []*report.Relation) error {
+func WriteServiceRelationships(ctx context.Context, database string, conn *sql.DB, toSends []*report.Relation) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertServiceRelationShipSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertServiceRelationShipSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, toSend := range toSends {
 			toSend.CollectRelationships()
 			timestamp := asTime(int64(toSend.RootNode.StartTime))

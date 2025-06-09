@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	insertServiceClientSQL = `INSERT INTO service_client (
+	insertServiceClientSQL = `INSERT INTO "%s".service_client (
 		timestamp,
 		entry_service,
 		entry_url,
@@ -47,19 +47,18 @@ const (
 	sourceAdapter = "adapter"
 )
 
-func WriteServiceClients(ctx context.Context, conn *sql.DB, toSends []*report.Relation) error {
+func WriteServiceClients(ctx context.Context, database string, conn *sql.DB, toSends []*report.Relation) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertServiceClientSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertServiceClientSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, toSend := range toSends {
 			timestamp := asTime(int64(toSend.RootNode.StartTime))
 			for _, externalNode := range toSend.CollectExternalNodes() {
@@ -98,7 +97,8 @@ func WriteServiceClients(ctx context.Context, conn *sql.DB, toSends []*report.Re
 	return err
 }
 
-func WriteClientMetric(toSends []*report.Relation, meitricWithUrl bool) error {
+func WriteClientMetric(toSends []*report.Relation, meitricWithUrl bool, accountID string) error {
+	// TODO set account
 	if len(toSends) == 0 {
 		return nil
 	}
@@ -112,7 +112,7 @@ func WriteClientMetric(toSends []*report.Relation, meitricWithUrl bool) error {
 
 			for _, externalRecord := range externalNode.Externals {
 				if externalRecord.Group == external.GroupExternal {
-					if err := metrics.UpdateMetric(metricModel.MetricExternalDuration, []string{
+					if err := metrics.UpdateMetric(accountID, metricModel.MetricExternalDuration, []string{
 						externalNode.ServiceName,
 						url,
 						externalNode.NodeName,
@@ -128,7 +128,7 @@ func WriteClientMetric(toSends []*report.Relation, meitricWithUrl bool) error {
 						return err
 					}
 				} else if externalRecord.Group == external.GroupDb {
-					if err := metrics.UpdateMetric(metricModel.MetricDbDuration, []string{
+					if err := metrics.UpdateMetric(accountID, metricModel.MetricDbDuration, []string{
 						externalNode.ServiceName,
 						url,
 						externalNode.NodeName,
@@ -145,7 +145,7 @@ func WriteClientMetric(toSends []*report.Relation, meitricWithUrl bool) error {
 						return err
 					}
 				} else if externalRecord.Group == external.GroupMq {
-					if err := metrics.UpdateMetric(metricModel.MetricMqDuration, []string{
+					if err := metrics.UpdateMetric(accountID, metricModel.MetricMqDuration, []string{
 						externalNode.ServiceName,
 						url,
 						externalNode.NodeName,

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertProfilingEventSQL = `INSERT INTO profiling_event (
+	insertProfilingEventSQL = `INSERT INTO "%s".profiling_event (
 		timestamp,
 		data_version,
 		pid,
@@ -65,19 +65,18 @@ type CameraProfileEvent struct {
 	OffsetTs        int64  `json:"offset_ts"`
 }
 
-func WriteProfilingEvents(ctx context.Context, conn *sql.DB, toSends []string) error {
+func WriteProfilingEvents(ctx context.Context, database string, conn *sql.DB, toSends []string) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertProfilingEventSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertProfilingEventSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, eventGroupJson := range toSends {
 			eventGroup := &CameraEventGroup{}
 			if err := json.Unmarshal([]byte(eventGroupJson), eventGroup); err != nil {

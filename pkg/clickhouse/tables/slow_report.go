@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	insertSlowReportSQL = `INSERT INTO slow_report (
+	insertSlowReportSQL = `INSERT INTO "%s".slow_report (
 		timestamp,
 		is_drop,
 		trace_id,
@@ -43,19 +43,18 @@ const (
 	)`
 )
 
-func WriteSlowReports(ctx context.Context, conn *sql.DB, toSends []*report.NodeReport) error {
+func WriteSlowReports(ctx context.Context, database string, conn *sql.DB, toSends []*report.NodeReport) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertSlowReportSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertSlowReportSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, nodeReport := range toSends {
 			relationTrees := ""
 			if nodeReport.Data.RelationTree != nil {

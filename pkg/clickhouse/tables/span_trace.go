@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	insertSpanTraceSQL = `INSERT INTO span_trace (
+	insertSpanTraceSQL = `INSERT INTO "%s".span_trace (
 		timestamp,
 		data_version,
 		pid,
@@ -64,19 +64,18 @@ var cpuTypes = []string{
 	"runq",
 }
 
-func WriteSpanTraces(ctx context.Context, conn *sql.DB, toSends []*model.Trace) error {
+func WriteSpanTraces(ctx context.Context, database string, conn *sql.DB, toSends []*model.Trace) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertSpanTraceSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertSpanTraceSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, trace := range toSends {
 			traceLabel := trace.Labels
 			flags := map[string]bool{
@@ -142,8 +141,9 @@ func WriteSpanTraces(ctx context.Context, conn *sql.DB, toSends []*model.Trace) 
 	return err
 }
 
-func QueryTraces(ctx context.Context, conn *sql.DB, traceId string) (*model.Traces, error) {
-	rows, err := conn.Query("SELECT * FROM span_trace WHERE trace_id=?", traceId)
+func QueryTraces(ctx context.Context, database string, conn *sql.DB, traceId string) (*model.Traces, error) {
+	sql := fmt.Sprintf(`SELECT * FROM "%s".span_trace WHERE trace_id=?`, database)
+	rows, err := conn.Query(sql, traceId)
 	if err != nil {
 		return nil, err
 	}

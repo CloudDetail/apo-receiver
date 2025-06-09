@@ -34,7 +34,7 @@ func NewPromRemoteWriter(writeURL string, buildMetricRequestFn func() *pb.WriteR
 	}, nil
 }
 
-func (pm *PromRemoteWriter) SendMetrics(ctx context.Context) error {
+func (pm *PromRemoteWriter) SendMetrics(ctx context.Context, _ string) error {
 	request := pm.buildMetricRequestFn()
 	if request == nil {
 		return nil

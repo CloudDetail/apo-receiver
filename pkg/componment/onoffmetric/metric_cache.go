@@ -159,10 +159,6 @@ func addOnOffMetrics(metrics map[MetricKey]*MetricDatas, sloType slomodel.SLOTyp
 	}
 }
 
-func BuildMetricKey(serviceName string, contentKey string) string {
-	return fmt.Sprintf("%s-%s", serviceName, contentKey)
-}
-
 type CPUType int
 
 const (

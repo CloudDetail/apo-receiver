@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	insertReportMetricSQL = `INSERT INTO report_metric (
+	insertReportMetricSQL = `INSERT INTO "%s".report_metric (
 		timestamp,
 		entry_service,
 		entry_url,
@@ -28,19 +28,18 @@ const (
 	)`
 )
 
-func WriteReportMetrics(ctx context.Context, conn *sql.DB, toSends []*profile_model.SlowReportCountMetric) error {
+func WriteReportMetrics(ctx context.Context, database string, conn *sql.DB, toSends []*profile_model.SlowReportCountMetric) error {
 	if len(toSends) == 0 {
 		return nil
 	}
 
 	err := doWithTx(ctx, conn, func(tx *sql.Tx) error {
-		statement, err := tx.PrepareContext(ctx, insertReportMetricSQL)
+		statement, err := tx.PrepareContext(ctx, fmt.Sprintf(insertReportMetricSQL, database))
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
 		}
-		defer func() {
-			_ = statement.Close()
-		}()
+		defer statement.Close()
+
 		for _, reportMetric := range toSends {
 			_, err = statement.ExecContext(ctx,
 				asTime(reportMetric.Timestamp), // NanoTime

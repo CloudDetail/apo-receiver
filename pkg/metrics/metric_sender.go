@@ -13,7 +13,7 @@ import (
 )
 
 type Sender interface {
-	SendMetrics(ctx context.Context) error
+	SendMetrics(ctx context.Context, accountID string) error
 }
 
 func InitMetricSend(url string, interval int, promType string) error {
@@ -23,8 +23,8 @@ func InitMetricSend(url string, interval int, promType string) error {
 	)
 
 	if promType == "vm" {
-		collectMetrics := func(w io.Writer) {
-			GetMetrics(w)
+		collectMetrics := func(accountID string, w io.Writer) {
+			GetMetrics(accountID, w)
 		}
 		sender, err = vm.NewVmPusher(url, collectMetrics)
 	} else {
@@ -54,7 +54,11 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 			select {
 			case <-ticker.C:
 				ctxLocal, cancel := context.WithTimeout(ctx, interval+time.Second)
-				err := sender.SendMetrics(ctxLocal)
+				accountIDs := GetUpdateTenant(ctxLocal)
+				var err error
+				for i := 0; i < len(accountIDs); i++ {
+					err = sender.SendMetrics(ctxLocal, accountIDs[i])
+				}
 				cancel()
 				if err != nil {
 					log.Printf("[x Send Metrics] %s", err)
@@ -66,4 +70,14 @@ func InitMetricSendWithOptions(ctx context.Context, interval time.Duration, send
 	}()
 
 	return nil
+}
+
+func GetUpdateTenant(ctx context.Context) []string {
+	var tenants []string
+	tenantScopeRegisteredMetrics.Range(func(key, value any) bool {
+		tenant := key.(string)
+		tenants = append(tenants, tenant)
+		return true
+	})
+	return tenants
 }
