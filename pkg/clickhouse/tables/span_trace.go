@@ -107,6 +107,7 @@ func WriteSpanTraces(ctx context.Context, conn *sql.DB, toSends []*model.Trace) 
 				"namespace":          trace.Namespace,
 				"node_name":          traceLabel.NodeName,
 				"node_ip":            traceLabel.NodeIp,
+				"cluster_id":         traceLabel.ClusterID,
 				"onoff_metrics":      trace.OnOffMetrics,
 				"base_onoff_metrics": trace.BaseOnOffMetrics,
 				"base_range":         trace.BaseRange,
