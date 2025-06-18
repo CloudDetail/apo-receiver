@@ -38,6 +38,7 @@ type FlameGraphEvent struct {
 	NsPid       int    `json:"ns_pid"`
 	NodeName    string `json:"node_name"`
 	NodeIp      string `json:"node_ip"`
+	ClusterID   string `json:"cluster_id"`
 	SampleType  string `json:"sample_type"`
 	SampleRate  uint32 `json:"sample_rate"`
 	TraceId     string `json:"trace_id"`
@@ -69,6 +70,7 @@ func WriteFlameGraph(ctx context.Context, conn *sql.DB, toSends []string) error 
 			labels := map[string]string{
 				"node_name":    flameGraphEvent.NodeName,
 				"node_ip":      flameGraphEvent.NodeIp,
+				"cluster_id":   flameGraphEvent.ClusterID,
 				"container_id": flameGraphEvent.ContainerId,
 				"ns_pid":       strconv.Itoa(flameGraphEvent.NsPid),
 			}

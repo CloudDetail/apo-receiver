@@ -42,6 +42,8 @@ github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc h
 github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc/go.mod h1:1CHcR5KaNC6ae6Wj41ONYKeDqxuS4IBpgBdMcxgPzfk=
 github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc h1:ZcIzlWIRlGRFmf4naVwXISgRdnwFpTJf/YkpUjpY/nQ=
 github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc/go.mod h1:9ZJgmGZcFO1Xa70ZRg000j3up8oo33wFeqTTAggilP8=
+github.com/CloudDetail/apo-module/model v0.0.0-20250618093713-7edf91dda667 h1:GNx47UIstl9uYeAuvMQHrSFaLMmH6w9WDhsbq5w/3GA=
+github.com/CloudDetail/apo-module/model v0.0.0-20250618093713-7edf91dda667/go.mod h1:9ZJgmGZcFO1Xa70ZRg000j3up8oo33wFeqTTAggilP8=
 github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc h1:HaxjeeN0rUeU+xmZSBLZrS1u/oANVhOzzcaBE46togw=
 github.com/CloudDetail/apo-module/slo/api v0.0.0-20250326032139-c96a724395fc/go.mod h1:zdaGJlYJ4RGAXdSZZYEW3kLwnLSu8BFQHQv0j+PHk7E=
 github.com/CloudDetail/apo-module/slo/sdk v0.0.0-20250326032139-c96a724395fc h1:qwrSoRsCBIh8T7xVhXVAV64oqmU45Lo4TpJ9wMbG1J0=
