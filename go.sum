@@ -40,6 +40,8 @@ github.com/CloudDetail/apo-module/apm/client v0.0.0-20250326032139-c96a724395fc 
 github.com/CloudDetail/apo-module/apm/client v0.0.0-20250326032139-c96a724395fc/go.mod h1:zF+uNa3aDPc36aSV4wKS0GHNFtgh6Rj12du5XaCErrs=
 github.com/CloudDetail/apo-module/apm/client v0.0.0-20250618093713-7edf91dda667 h1:DgGb605+1LDXzEdmZZi7cYEHxHUPKTzl4bzVOxP25T0=
 github.com/CloudDetail/apo-module/apm/client v0.0.0-20250618093713-7edf91dda667/go.mod h1:zF+uNa3aDPc36aSV4wKS0GHNFtgh6Rj12du5XaCErrs=
+github.com/CloudDetail/apo-module/apm/client v0.0.0-20250625022830-f240d8d2ffb5 h1:fra4dQbyWhaV1hBxqbdivGUISNILxoXcmw5Fo9bzOjw=
+github.com/CloudDetail/apo-module/apm/client v0.0.0-20250625022830-f240d8d2ffb5/go.mod h1:zF+uNa3aDPc36aSV4wKS0GHNFtgh6Rj12du5XaCErrs=
 github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc h1:N4lXKF+gnEoxI5SSh7RNxD4F77fuqMBawM8TICSyA98=
 github.com/CloudDetail/apo-module/apm/model v0.0.0-20250326032139-c96a724395fc/go.mod h1:1CHcR5KaNC6ae6Wj41ONYKeDqxuS4IBpgBdMcxgPzfk=
 github.com/CloudDetail/apo-module/model v0.0.0-20250326032139-c96a724395fc h1:ZcIzlWIRlGRFmf4naVwXISgRdnwFpTJf/YkpUjpY/nQ=

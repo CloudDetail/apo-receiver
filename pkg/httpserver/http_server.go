@@ -100,6 +100,7 @@ func getThresholds(ctx iris.Context) {
 
 func realtimeSlowReport(ctx iris.Context) {
 	traceId := ctx.Params().GetString("traceId")
+	clusterID := ctx.Params().GetString("clusterId")
 
 	traces, err := global.CLICK_HOUSE.QueryTraces(ctx, traceId)
 	if err != nil {
@@ -107,7 +108,7 @@ func realtimeSlowReport(ctx iris.Context) {
 		return
 	}
 
-	result, clientCalls, err := global.TRACE_CLIENT.QueryMutatedSlowTraceTree(traceId, traces)
+	result, clientCalls, err := global.TRACE_CLIENT.QueryMutatedSlowTraceTree(ctx, clusterID, traceId, traces)
 	if err != nil {
 		responseWithError(ctx, err)
 		return
@@ -121,6 +122,7 @@ func realtimeSlowReport(ctx iris.Context) {
 
 func realtimeErrorReport(ctx iris.Context) {
 	traceId := ctx.Params().GetString("traceId")
+	clusterID := ctx.Params().GetString("clusterId")
 
 	traces, err := global.CLICK_HOUSE.QueryTraces(ctx, traceId)
 	if err != nil {
@@ -128,7 +130,7 @@ func realtimeErrorReport(ctx iris.Context) {
 		return
 	}
 
-	result, err := global.TRACE_CLIENT.QueryErrorTraceTree(traceId, traces)
+	result, err := global.TRACE_CLIENT.QueryErrorTraceTree(ctx, clusterID, traceId, traces)
 	if err != nil {
 		responseWithError(ctx, err)
 		return
