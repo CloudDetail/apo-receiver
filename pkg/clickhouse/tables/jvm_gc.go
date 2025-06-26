@@ -40,6 +40,7 @@ type JvmGcInfo struct {
 	Pid              string `json:"pid"`
 	NodeName         string `json:"node_name"`
 	NodeIp           string `json:"node_ip"`
+	ClusterID        string `json:"cluster_id"`
 	Ygc              int64  `json:"ygc"`
 	Fgc              int64  `json:"fgc"`
 	LastYgc          int64  `json:"last_ygc"`
@@ -71,8 +72,9 @@ func WriteJvmGcs(ctx context.Context, conn *sql.DB, toSends []string) error {
 				continue
 			}
 			labels := map[string]string{
-				"node_name": jvmGc.NodeName,
-				"node_ip":   jvmGc.NodeIp,
+				"node_name":  jvmGc.NodeName,
+				"node_ip":    jvmGc.NodeIp,
+				"cluster_id": jvmGc.ClusterID,
 			}
 			_, err = statement.ExecContext(ctx,
 				asTime(int64(jvmGc.Timestamp)), // NanoTime

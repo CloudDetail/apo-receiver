@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -259,7 +260,7 @@ func (analyzer *ReportAnalyzer) processTask(task *traceTask) {
 			mergeTraces(task.traces, getTracesFromCache(traces.TraceId))
 		}
 	}
-	retry, err := analyzer.buildReport(task.traces, task.reportType)
+	retry, err := analyzer.buildReport(context.Background(), task.traces, task.reportType)
 	if err != nil {
 		if retry {
 			if !task.ignoreRetry && task.retryTimes < analyzer.retryTimes {
@@ -284,14 +285,14 @@ func sendProfiledSpanTrace(trace *model.Trace) {
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildReport(traces *model.Traces, reportType report.ReportType) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildReport(ctx context.Context, traces *model.Traces, reportType report.ReportType) (retry bool, err error) {
 	switch reportType {
 	case report.ErrorReportType:
-		return analyzer.buildErrorReports(traces)
+		return analyzer.buildErrorReports(ctx, traces)
 	case report.SlowReportType:
-		return analyzer.buildSlowReports(traces)
+		return analyzer.buildSlowReports(ctx, traces)
 	case report.NormalReportType:
-		if _, err := analyzer.buildRelations(traces); err != nil {
+		if _, err := analyzer.buildRelations(ctx, traces); err != nil {
 			return true, err
 		}
 		return false, nil
@@ -300,23 +301,23 @@ func (analyzer *ReportAnalyzer) buildReport(traces *model.Traces, reportType rep
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildErrorReports(traces *model.Traces) (retry bool, err error) {
-	serviceNodes, err := analyzer.buildRelations(traces)
+func (analyzer *ReportAnalyzer) buildErrorReports(ctx context.Context, traces *model.Traces) (retry bool, err error) {
+	serviceNodes, err := analyzer.buildRelations(ctx, traces)
 	if err != nil {
 		return true, err
 	}
 	if traces.RootTrace != nil {
-		return analyzer.buildSingleErrorReport(serviceNodes, traces)
+		return analyzer.buildSingleErrorReport(ctx, serviceNodes, traces)
 	} else {
-		return analyzer.buildMultiErrorReports(serviceNodes, traces)
+		return analyzer.buildMultiErrorReports(ctx, serviceNodes, traces)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildSingleErrorReport(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	entryTrace := traces.RootTrace
 	apmType := entryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, entryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -325,17 +326,17 @@ func (analyzer *ReportAnalyzer) buildSingleErrorReport(serviceNodes []*apmmodel.
 	spanTraces := apmclient.NewNodeSpanTraces(apmType, serviceNodes, traces)
 	for _, spanTrace := range spanTraces.Traces {
 		if spanTrace.SampledTrace.Labels.ApmSpanId == entryTrace.Labels.ApmSpanId {
-			return analyzer.generateErrorReport(apmType, traces, spanTrace)
+			return analyzer.generateErrorReport(ctx, apmType, traces, spanTrace)
 		}
 	}
 	return true, fmt.Errorf("entry[%s-%s] is not collected by apo", entryTrace.Labels.ServiceName, entryTrace.Labels.Url)
 }
 
-func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildMultiErrorReports(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	queryTrace := traces.GetQueryTrace()
 	apmType := queryTrace.Labels.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace.Labels)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, queryTrace.Labels)
 		if err != nil {
 			return true, err
 		}
@@ -347,7 +348,7 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	}
 
 	for _, spanTrace := range spanTraces.Traces {
-		if _, err := analyzer.generateErrorReport(apmType, traces, spanTrace); err != nil {
+		if _, err := analyzer.generateErrorReport(ctx, apmType, traces, spanTrace); err != nil {
 			log.Print(err.Error())
 		}
 	}
@@ -355,14 +356,14 @@ func (analyzer *ReportAnalyzer) buildMultiErrorReports(serviceNodes []*apmmodel.
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) generateErrorReport(apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) generateErrorReport(ctx context.Context, apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
 	apmErrorTree := apmclient.ConvertErrorTree(spanTrace)
 	// [Fix for Arms] Add all error nodes.
-	if global.TRACE_CLIENT.NeedGetDetailSpan(apmType) {
+	if global.TRACE_CLIENT.NeedGetDetailSpan(ctx, apmType) {
 		for spanId, errorNode := range apmErrorTree.NodeMap {
 			if errorNode.IsError && errorNode.IsSampled {
 				if node := spanTrace.GetServiceNode(spanId); node != nil {
-					if err := global.TRACE_CLIENT.FillMutatedSpan(apmType, traces.TraceId, node); err != nil {
+					if err := global.TRACE_CLIENT.FillMutatedSpan(ctx, traces.RootTrace.Labels.ClusterID, apmType, traces.TraceId, node); err != nil {
 						return true, err
 					}
 					errorNode.ErrorSpans = apmclient.GetErrorSpans(node)
@@ -431,20 +432,20 @@ func storeTrace(trace *model.Trace) {
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSlowReports(traces *model.Traces) (retry bool, err error) {
-	serviceNodes, err := analyzer.buildRelations(traces)
+func (analyzer *ReportAnalyzer) buildSlowReports(ctx context.Context, traces *model.Traces) (retry bool, err error) {
+	serviceNodes, err := analyzer.buildRelations(ctx, traces)
 	if err != nil {
 		return true, err
 	}
 
 	if traces.RootTrace != nil {
-		return analyzer.buildSingleSlowReport(serviceNodes, traces)
+		return analyzer.buildSingleSlowReport(ctx, serviceNodes, traces)
 	} else {
-		return analyzer.buildMultiSlowReports(serviceNodes, traces)
+		return analyzer.buildMultiSlowReports(ctx, serviceNodes, traces)
 	}
 }
 
-func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (bool, error) {
+func (analyzer *ReportAnalyzer) buildSingleSlowReport(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (bool, error) {
 	entryTrace := traces.RootTrace.Labels
 	if uint64(entryTrace.ThresholdValue) >= entryTrace.Duration {
 		return false, fmt.Errorf("entry service(%s) duration(%d) is less than threshold(%s(%s)=%f)",
@@ -473,7 +474,7 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	apmType := entryTrace.ApmType
 	var err error
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, entryTrace)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, entryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -482,17 +483,17 @@ func (analyzer *ReportAnalyzer) buildSingleSlowReport(serviceNodes []*apmmodel.O
 	spanTraces := apmclient.NewNodeSpanTraces(apmType, serviceNodes, traces)
 	for _, spanTrace := range spanTraces.Traces {
 		if spanTrace.SampledTrace.Labels.ApmSpanId == entryTrace.ApmSpanId {
-			return analyzer.generateSlowReport(apmType, traces, spanTrace)
+			return analyzer.generateSlowReport(ctx, apmType, traces, spanTrace)
 		}
 	}
 	return true, fmt.Errorf("entry[%s-%s] is not collected by apo", entryTrace.ServiceName, entryTrace.Url)
 }
 
-func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) buildMultiSlowReports(ctx context.Context, serviceNodes []*apmmodel.OtelServiceNode, traces *model.Traces) (retry bool, err error) {
 	queryTrace := traces.GetQueryTrace().Labels
 	apmType := queryTrace.ApmType
 	if serviceNodes == nil {
-		serviceNodes, err = analyzer.queryServices(apmType, traces.TraceId, queryTrace)
+		serviceNodes, err = analyzer.queryServices(ctx, apmType, traces.TraceId, queryTrace)
 		if err != nil {
 			return true, err
 		}
@@ -510,7 +511,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 				entryTrace.ServiceName, entryTrace.Duration, entryTrace.ThresholdType, entryTrace.ThresholdRange,
 				entryTrace.ThresholdValue)
 		} else {
-			if _, err := analyzer.generateSlowReport(entryTrace.ApmType, traces, spanTrace); err != nil {
+			if _, err := analyzer.generateSlowReport(ctx, entryTrace.ApmType, traces, spanTrace); err != nil {
 				log.Print(err.Error())
 			}
 		}
@@ -518,7 +519,7 @@ func (analyzer *ReportAnalyzer) buildMultiSlowReports(serviceNodes []*apmmodel.O
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
+func (analyzer *ReportAnalyzer) generateSlowReport(ctx context.Context, apmType string, traces *model.Traces, spanTrace *apmclient.NodeSpanTrace) (retry bool, err error) {
 	apmTraceTree := apmclient.ConvertSlowTree(spanTrace)
 	mutatedTrace, err := apmTraceTree.GetMutatedTraceNode(traces.TraceId, analyzer.muatedRatio, analyzer.mutateNodeMode)
 	if err != nil {
@@ -526,8 +527,8 @@ func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model
 	}
 
 	// [FIX Arms] Add Spans for Clients and Excpetions
-	if global.TRACE_CLIENT.NeedGetDetailSpan(apmType) {
-		if err := global.TRACE_CLIENT.FillMutatedSpan(apmType, traces.TraceId, spanTrace.GetServiceNode(mutatedTrace.SpanId)); err != nil {
+	if global.TRACE_CLIENT.NeedGetDetailSpan(ctx, apmType) {
+		if err := global.TRACE_CLIENT.FillMutatedSpan(ctx, traces.RootTrace.Labels.ClusterID, apmType, traces.TraceId, spanTrace.GetServiceNode(mutatedTrace.SpanId)); err != nil {
 			return true, err
 		}
 	}
@@ -590,7 +591,7 @@ func (analyzer *ReportAnalyzer) generateSlowReport(apmType string, traces *model
 	return false, nil
 }
 
-func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmodel.OtelServiceNode, error) {
+func (analyzer *ReportAnalyzer) buildRelations(ctx context.Context, traces *model.Traces) ([]*apmmodel.OtelServiceNode, error) {
 	entryTrace := traces.GetQueryTrace()
 	if entryTrace == nil {
 		return nil, nil
@@ -604,7 +605,7 @@ func (analyzer *ReportAnalyzer) buildRelations(traces *model.Traces) ([]*apmmode
 		}
 	}
 
-	serviceNodes, err := analyzer.queryServices(entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
+	serviceNodes, err := analyzer.queryServices(ctx, entryTraceLabels.ApmType, traces.TraceId, entryTraceLabels)
 	if err != nil {
 		return nil, err
 	}
@@ -704,8 +705,8 @@ func (analyzer *ReportAnalyzer) checkTask() {
 	}
 }
 
-func (analyzer *ReportAnalyzer) queryServices(apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(apmType, traceId, rootTrace)
+func (analyzer *ReportAnalyzer) queryServices(ctx context.Context, apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
+	serviceNodes, err := global.TRACE_CLIENT.QueryServices(ctx, apmType, rootTrace.ClusterID, traceId, rootTrace)
 	// Record Metric
 	metrics.UpdateMetric(metricModel.MetricAdapterApmTraceCount, []string{
 		rootTrace.NodeName,

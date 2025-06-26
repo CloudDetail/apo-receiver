@@ -52,6 +52,7 @@ type CameraProfileEvent struct {
 	ContainerId     string `json:"container_id"`
 	NodeName        string `json:"node_name"`
 	NodeIp          string `json:"node_ip"`
+	ClusterID       string `json:"cluster_id"`
 	EndTime         uint64 `json:"endTime"`
 	InnerCalls      string `json:"innerCalls"`
 	JavaFutexEvents string `json:"javaFutexEvents"`
@@ -88,6 +89,7 @@ func WriteProfilingEvents(ctx context.Context, conn *sql.DB, toSends []string) e
 				"container_id": eventGroup.Labels.ContainerId,
 				"node_name":    eventGroup.Labels.NodeName,
 				"node_ip":      eventGroup.Labels.NodeIp,
+				"cluster_id":   eventGroup.Labels.ClusterID,
 				"protocol":     eventGroup.Labels.Protocol,
 				"threadName":   eventGroup.Labels.ThreadName,
 			}
