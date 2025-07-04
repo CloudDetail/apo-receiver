@@ -20,3 +20,9 @@ CREATE TABLE IF NOT EXISTS alert_event
     ON CLUSTER {{.Cluster}} AS {{.Database}}.alert_event_local
 ENGINE = Distributed('{{.Cluster}}', '{{.Database}}', 'alert_event_local', cityHash64(alert_id));
 {{end}}
+
+
+-- 1.9.0
+ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `alert_direction` String;
+ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `analyze_run_id` String;
+ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN `analyze_err` String;
