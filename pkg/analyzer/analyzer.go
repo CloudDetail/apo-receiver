@@ -706,7 +706,7 @@ func (analyzer *ReportAnalyzer) checkTask() {
 }
 
 func (analyzer *ReportAnalyzer) queryServices(ctx context.Context, apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(ctx, apmType, rootTrace.ClusterID, traceId, rootTrace)
+	serviceNodes, err := global.TRACE_CLIENT.QueryServices(ctx, rootTrace.ClusterID, apmType, traceId, rootTrace)
 	// Record Metric
 	metrics.UpdateMetric(metricModel.MetricAdapterApmTraceCount, []string{
 		rootTrace.NodeName,
