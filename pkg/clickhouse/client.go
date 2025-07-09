@@ -9,10 +9,12 @@ import (
 
 	"github.com/CloudDetail/apo-module/model/v1"
 
+	"github.com/CloudDetail/apo-receiver/pkg/analyzer/appinfo"
 	"github.com/CloudDetail/apo-receiver/pkg/analyzer/report"
 	"github.com/CloudDetail/apo-receiver/pkg/clickhouse/tables"
 	profile_model "github.com/CloudDetail/apo-receiver/pkg/componment/profile/model"
 	"github.com/CloudDetail/apo-receiver/pkg/config"
+	grpc_model "github.com/CloudDetail/apo-receiver/pkg/model"
 )
 
 var (
@@ -94,6 +96,14 @@ func (client *ClickHouseClient) StoreAgentEvent(agentEvent *model.AgentEvent) {
 	client.cache.cacheAgentEvent(agentEvent)
 }
 
+func (client *ClickHouseClient) StoreAppInfo(appInfo *appinfo.AppInfo) {
+	client.cache.cacheAppInfo(appInfo)
+}
+
+func (client *ClickHouseClient) QueryRelatedAppInfos(ctx context.Context) (map[string][]*grpc_model.QueryMonitedAppData, error) {
+	return tables.QueryRelatedAppInfos(ctx, client.Conn)
+}
+
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {
 	return tables.QueryTraces(ctx, client.Conn, traceId)
 }
@@ -123,6 +133,9 @@ func (client *ClickHouseClient) batchSendToServer() {
 			}
 			if err := tables.WriteSpanTraces(ctx, client.Conn, client.cache.getToSendSpanTraces()); err != nil {
 				log.Printf("[x Add SpanTrace] %s", err.Error())
+			}
+			if err := tables.WriteAppInfos(ctx, client.Conn, client.cache.getToSendAppInfos()); err != nil {
+				log.Printf("[x Add AppInfo] %s", err.Error())
 			}
 			if err := tables.WriteSlowReports(ctx, client.Conn, client.cache.getToSendNodeReports()); err != nil {
 				log.Printf("[x Add SlowReport] %s", err.Error())

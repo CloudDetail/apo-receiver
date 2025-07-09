@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option go_package = ".;model";
+
+package kindling;
+
+// The Grpc service definition.
+service AppService {
+    rpc QueryMonitedApps (QueryMonitedAppRequest) returns (QueryMonitedAppResponse) {}
+}
+
+message QueryMonitedAppRequest {
+    string nodeIp = 1;
+    string nodeName = 2;
+    string clusterId = 3;
+}
+
+message QueryMonitedAppResponse {
+	repeated QueryMonitedAppData datas = 1;
+}
+
+message QueryMonitedAppData {
+	string source = 1;
+	string serviceId = 2;
+	string serviceName = 3;
+    uint64 startTime = 4;
+	uint32 hostPid = 5;
+    string containerId = 6;
+    string podName = 7;
+}

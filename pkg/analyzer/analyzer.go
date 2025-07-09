@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CloudDetail/apo-receiver/pkg/analyzer/appinfo"
 	"github.com/CloudDetail/apo-receiver/pkg/analyzer/external"
 	"github.com/CloudDetail/apo-receiver/pkg/analyzer/report"
 	"github.com/CloudDetail/apo-receiver/pkg/componment/onoffmetric"
@@ -102,6 +103,17 @@ func (analyzer *ReportAnalyzer) StoreEvent(eventJson string) {
 	fillK8sMetadataInEvent(agentEvent)
 
 	global.CLICK_HOUSE.StoreAgentEvent(agentEvent)
+}
+
+func (analyzer *ReportAnalyzer) StoreAppInfo(appInfoJson string) {
+  appInfo := &appinfo.AppInfo{}
+  if err := json.Unmarshal([]byte(appInfoJson), appInfo); err != nil {
+    log.Printf("[x Parse Agent Event] Error: %s", err.Error())
+    return
+  }
+  fillK8sMetadataInApp(appInfo)
+
+  global.CLICK_HOUSE.StoreAppInfo(appInfo)
 }
 
 func (analyzer *ReportAnalyzer) CacheMetric(metricJson string) {

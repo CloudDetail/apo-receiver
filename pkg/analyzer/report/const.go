@@ -12,6 +12,7 @@ const (
 	DesignatedProfilingSignal = "designated_profiling_signal"
 
 	OriginxAgentEvent = "originx_agent_event"
+	OriginxAppInfo    = "originx_app_info"
 )
 
 type ReportType int

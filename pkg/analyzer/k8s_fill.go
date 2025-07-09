@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"github.com/CloudDetail/apo-module/model/v1"
+	"github.com/CloudDetail/apo-receiver/pkg/analyzer/appinfo"
 	"github.com/CloudDetail/metadata/model/cache"
 )
 
@@ -31,6 +32,20 @@ func fillK8sMetadataInEvent(event *model.AgentEvent) {
 			if len(owners) > 0 {
 				event.Labels["workload_name"] = owners[0].Name
 				event.Labels["workload_kind"] = owners[0].Kind
+			}
+		}
+	}
+}
+
+func fillK8sMetadataInApp(appInfo *appinfo.AppInfo) {
+	if appInfo.ContainerId != "" {
+		if pod, find := cache.Querier.GetPodByContainerId("", appInfo.ContainerId); find {
+			appInfo.Labels["pod_name"] = pod.Name
+			appInfo.Labels["namespace"] = pod.NS()
+			owners := pod.GetOwnerReferences(true)
+			if len(owners) > 0 {
+				appInfo.Labels["workload_name"] = owners[0].Name
+				appInfo.Labels["workload_kind"] = owners[0].Kind
 			}
 		}
 	}

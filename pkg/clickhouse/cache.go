@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/CloudDetail/apo-module/model/v1"
+	"github.com/CloudDetail/apo-receiver/pkg/analyzer/appinfo"
 	"github.com/CloudDetail/apo-receiver/pkg/analyzer/report"
 	profile_model "github.com/CloudDetail/apo-receiver/pkg/componment/profile/model"
 
@@ -23,6 +24,7 @@ type cache struct {
 	cameraReportMetrics []*profile_model.SlowReportCountMetric
 	relations           []*report.Relation
 	originxAgentEvents  []*model.AgentEvent
+	originxAppInfos     []*appinfo.AppInfo
 }
 
 func newCache() *cache {
@@ -37,6 +39,7 @@ func newCache() *cache {
 		cameraReportMetrics: make([]*profile_model.SlowReportCountMetric, 0),
 		relations:           make([]*report.Relation, 0),
 		originxAgentEvents:  make([]*model.AgentEvent, 0),
+		originxAppInfos:     make([]*appinfo.AppInfo, 0),
 	}
 }
 
@@ -100,6 +103,13 @@ func (c *cache) cacheAgentEvent(agentEvent *model.AgentEvent) {
 	c.originxAgentEvents = append(c.originxAgentEvents, agentEvent)
 }
 
+func (c *cache) cacheAppInfo(appInfo *appinfo.AppInfo) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.originxAppInfos = append(c.originxAppInfos, appInfo)
+}
+
 func (c *cache) getToSendEventGroups() []string {
 	size := len(c.cameraEventGroups)
 	if size == 0 {
@@ -153,6 +163,20 @@ func (c *cache) getToSendOnOffMetrics() []string {
 
 	toSends := c.onoffMetrics[0:size]
 	c.onoffMetrics = c.onoffMetrics[size:]
+	return toSends
+}
+
+func (c *cache) getToSendAppInfos() []*appinfo.AppInfo {
+	size := len(c.originxAppInfos)
+	if size == 0 {
+		return nil
+	}
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	toSends := c.originxAppInfos[0:size]
+	c.originxAppInfos = c.originxAppInfos[size:]
 	return toSends
 }
 

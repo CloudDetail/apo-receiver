@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
 	"log"
 	"net"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+
+	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
 
 	"github.com/CloudDetail/apo-receiver/pkg/componment/ebpffile"
 	"github.com/CloudDetail/apo-receiver/pkg/componment/redis"
@@ -97,6 +98,9 @@ func Run(ctx context.Context) error {
 
 	onoffmetric.CacheInstance = onoffmetric.NewMetricCache(prometheusV1Api)
 	onoffmetric.CacheInstance.Start()
+
+	agentmonitor.CacheInstance = agentmonitor.NewMonitedAppCache()
+	agentmonitor.CacheInstance.Start()
 
 	startMetadataFetch(k8sCfg)
 
@@ -200,6 +204,9 @@ func startGrpcServer(
 	traceServer := trace.NewTraceServer(analyzer)
 	model.RegisterTraceServiceServer(server, traceServer)
 	traceServer.Start()
+
+	monitedAppServer := agentmonitor.NewMonitedAppServer()
+	model.RegisterAppServiceServer(server, monitedAppServer)
 
 	ebpfFileReceiver := ebpffile.NewEbpfFIleServer(receiverCfg.CenterApiServer, receiverCfg.PortalAddress)
 	model.RegisterFileServiceServer(server, ebpfFileReceiver)
