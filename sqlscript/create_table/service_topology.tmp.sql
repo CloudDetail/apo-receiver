@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS service_topology{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}}
 (
     timestamp DateTime CODEC(Delta, ZSTD(1)),
+    cluster_id String CODEC(ZSTD(1)),
     source String CODEC(ZSTD(1)),
     parent_service String CODEC(ZSTD(1)),
     parent_type String CODEC(ZSTD(1)),
