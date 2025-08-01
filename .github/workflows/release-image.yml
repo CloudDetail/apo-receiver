@@ -64,8 +64,8 @@ jobs:
           COMMIT_HASH: ${{ github.sha }}
         run: |
           echo "IMAGE_TAG_NAME=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          echo "COLLECTOR_IMAGE_FULL_TAG_AMD64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${IMAGE_TAG_NAME}" >> $GITHUB_ENV
-          echo "COLLECTOR_IMAGE_FULL_TAG_ARM64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${IMAGE_TAG_NAME}-arm64" >> $GITHUB_ENV
+          echo "COLLECTOR_IMAGE_FULL_TAG_AMD64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${{ IMAGE_TAG_NAME }}" >> $GITHUB_ENV
+          echo "COLLECTOR_IMAGE_FULL_TAG_ARM64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${{ IMAGE_TAG_NAME }}-arm64" >> $GITHUB_ENV
 
       - name: Build and push AMD64 image
         if: github.event_name == 'workflow_dispatch'
