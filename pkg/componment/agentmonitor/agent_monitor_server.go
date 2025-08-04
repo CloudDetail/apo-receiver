@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/CloudDetail/apo-receiver/pkg/model"
@@ -84,7 +85,7 @@ type MonitorMetric struct {
 type AgentMonitorServer struct {
 	model.UnimplementedAgentMonitorServiceServer
 	clusterId  string
-	monitorIds map[string]MonitorMetric
+	monitorIds sync.Map
 	promClient v1.API
 	dingDingWH string
 }
@@ -92,7 +93,7 @@ type AgentMonitorServer struct {
 func NewAgentMonitorServer(clusterId string, promClient v1.API, DingDingWH string) *AgentMonitorServer {
 	ag := &AgentMonitorServer{
 		clusterId:  clusterId,
-		monitorIds: make(map[string]MonitorMetric),
+		monitorIds: sync.Map{},
 		promClient: promClient,
 		dingDingWH: DingDingWH,
 	}
@@ -152,7 +153,7 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 	request.CpuUsage = uint64(cpuValue)
 	request.MemUsage = uint64(rssValue)
 	// 组合消息内容
-	if _, exists := server.monitorIds[request.Iud]; !exists {
+	if value, exists := server.monitorIds.Load(request.Iud); !exists {
 		adptor := "已适配内核"
 		if request.EvtNum == 0 {
 			adptor = "未适配内核"
@@ -190,7 +191,7 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 			nowCpuEvtNum:  request.CpuEvtNum,
 			nowTxEvtNum:   request.TxEvtNum,
 		}
-		server.monitorIds[request.Iud] = metric
+		server.monitorIds.Store(request.Iud, metric)
 
 		// 替换为你自己的钉钉机器人 Webhook 地址
 		webhookURL := server.dingDingWH
@@ -201,20 +202,24 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 			log.Println("发送钉钉消息失败:", err)
 		}
 	} else {
-		metric := MonitorMetric{
-			uId:           request.Iud,
-			KernelVersion: request.KernelVersion,
-			Arch:          request.Arch,
-			preEvtNum:     server.monitorIds[request.Iud].nowEvtNum,
-			preCpuEvtNum:  server.monitorIds[request.Iud].nowCpuEvtNum,
-			preTxEvtNum:   server.monitorIds[request.Iud].nowTxEvtNum,
-			MemUsage:      request.MemUsage / 1000 / 1000,
-			CpuUsage:      request.CpuUsage,
-			nowEvtNum:     request.EvtNum,
-			nowCpuEvtNum:  request.CpuEvtNum,
-			nowTxEvtNum:   request.TxEvtNum,
+		oldMetric, ok := value.(MonitorMetric)
+		if ok {
+			metric := MonitorMetric{
+				uId:           request.Iud,
+				KernelVersion: request.KernelVersion,
+				Arch:          request.Arch,
+				preEvtNum:     oldMetric.nowEvtNum,
+				preCpuEvtNum:  oldMetric.nowCpuEvtNum,
+				preTxEvtNum:   oldMetric.nowTxEvtNum,
+				MemUsage:      request.MemUsage / 1000 / 1000,
+				CpuUsage:      request.CpuUsage,
+				nowEvtNum:     request.EvtNum,
+				nowCpuEvtNum:  request.CpuEvtNum,
+				nowTxEvtNum:   request.TxEvtNum,
+			}
+			server.monitorIds.Store(request.Iud, metric)
 		}
-		server.monitorIds[request.Iud] = metric
+
 	}
 
 	fileResp := &model.AgentMonitorResponse{}
@@ -222,83 +227,120 @@ func (server *AgentMonitorServer) SendAgentMonitorMetric(ctx context.Context, re
 }
 
 func (server *AgentMonitorServer) doStatistic() {
-	var validCountTmp int
-	var totalEvtDiff, totalCpuEvtDiff, totalTxEvtDiff, totalCpu, totalMem uint64
+	var (
+		validCountTmp   int
+		totalEvtDiff    uint64
+		totalCpuEvtDiff uint64
+		totalTxEvtDiff  uint64
+		totalCpu        uint64
+		totalMem        uint64
+	)
+
 	webhookURL := server.dingDingWH
 
-	for uId, metric := range server.monitorIds {
-		if metric.nowEvtNum > metric.preEvtNum {
+	// 使用 Range 遍历 sync.Map
+	server.monitorIds.Range(func(key, value interface{}) bool {
+		// 类型断言获取 MonitorMetric
+		metric, ok := value.(MonitorMetric)
+		if !ok {
+			log.Printf("类型断言失败，键: %v", key)
+			return true // 继续遍历
+		}
+
+		// 计算事件差值
+		evtDiff := metric.nowEvtNum - metric.preEvtNum
+		cpuEvtDiff := metric.nowCpuEvtNum - metric.preCpuEvtNum
+		txEvtDiff := metric.nowTxEvtNum - metric.preTxEvtNum
+
+		// 事件增长的探针视为有效
+		if evtDiff > 0 {
 			validCountTmp++
-			totalEvtDiff += metric.nowEvtNum - metric.preEvtNum
-			totalCpuEvtDiff += metric.nowCpuEvtNum - metric.preCpuEvtNum
-			totalTxEvtDiff += metric.nowTxEvtNum - metric.preTxEvtNum
+			totalEvtDiff += evtDiff
+			totalCpuEvtDiff += cpuEvtDiff
+			totalTxEvtDiff += txEvtDiff
 			totalCpu += metric.CpuUsage
 			totalMem += metric.MemUsage
-			metric.preEvtNum = metric.nowEvtNum
-			server.monitorIds[uId] = metric
+
+			// 更新 pre 计数并回写 Map
+			newMetric := MonitorMetric{
+				uId:           metric.uId,
+				KernelVersion: metric.KernelVersion,
+				Arch:          metric.Arch,
+				preEvtNum:     metric.nowEvtNum, // 更新为当前值
+				preCpuEvtNum:  metric.nowCpuEvtNum,
+				preTxEvtNum:   metric.nowTxEvtNum,
+				MemUsage:      metric.MemUsage,
+				CpuUsage:      metric.CpuUsage,
+				nowEvtNum:     metric.nowEvtNum,
+				nowCpuEvtNum:  metric.nowCpuEvtNum,
+				nowTxEvtNum:   metric.nowTxEvtNum,
+			}
+			server.monitorIds.Store(key, newMetric)
 		} else {
-			messageDeadAgent := fmt.Sprintf("Agent 事件不再增长，可能故障：\n"+
+			// 事件未增长，发送告警
+			message := fmt.Sprintf("Agent 事件不再增长，可能故障：\n"+
 				" - clusterId: %s\n"+
-				" - 探针id: %s\n",
+				" - 探针ID: %s\n",
 				server.clusterId,
 				metric.uId,
 			)
-			sendDingTalkMessage(webhookURL, messageDeadAgent)
+			if err := sendDingTalkMessage(webhookURL, message); err != nil {
+				log.Printf("发送钉钉消息失败: %v", err)
+			}
 		}
+
+		// 资源使用检查
 		if metric.CpuUsage > 100 || metric.MemUsage > 1000 {
-			messageUnhealthAgent := fmt.Sprintf("Agent 资源过高：\n"+
+			message := fmt.Sprintf("Agent 资源过高：\n"+
 				" - clusterId: %s\n"+
-				" - 探针id: %s\n"+
-				" - cpuuage: %d %%\n"+
-				" - memage: %d mb \n ",
+				" - 探针ID: %s\n"+
+				" - CPU使用率: %d%%\n"+
+				" - 内存使用: %d MB\n",
 				server.clusterId,
 				metric.uId,
 				metric.CpuUsage,
 				metric.MemUsage,
 			)
-			sendDingTalkMessage(webhookURL, messageUnhealthAgent)
-
+			if err := sendDingTalkMessage(webhookURL, message); err != nil {
+				log.Printf("发送钉钉消息失败: %v", err)
+			}
 		}
+
+		return true // 继续遍历
+	})
+
+	// 构建统计消息
+	message := fmt.Sprintf("Agent 统计信息：\n"+
+		" - clusterId: %s\n"+
+		" - 正常运行探针数: %d\n"+
+		" - 每分钟平均事件数: %d\n"+
+		" - 每分钟平均CPU事件数: %d\n"+
+		" - 每分钟平均TX事件数: %d\n"+
+		" - 平均CPU使用率: %d%%\n"+
+		" - 平均内存使用: %d MB\n",
+		server.clusterId,
+		validCountTmp,
+		totalEvtDiff/5, // 5分钟间隔
+		totalCpuEvtDiff/5,
+		totalTxEvtDiff/5,
+		func() uint64 {
+			if validCountTmp == 0 {
+				return 0
+			}
+			return totalCpu / uint64(validCountTmp)
+		}(),
+		func() uint64 {
+			if validCountTmp == 0 {
+				return 0
+			}
+			return totalMem / uint64(validCountTmp)
+		}(),
+	)
+
+	log.Println("汇总统计信息:", message)
+	if err := sendDingTalkMessage(webhookURL, message); err != nil {
+		log.Printf("发送统计信息失败: %v", err)
 	}
-	message := ""
-	if validCountTmp == 0 {
-		message = fmt.Sprintf("Agent 统计信息：\n"+
-			" - clusterId: %s\n"+
-			" - 正常运行探针个数: %d\n"+
-			" - 每分钟平均事件数量: %d\n"+
-			" - 每分钟平均Cpu事件数量: %d\n"+
-			" - 每分钟平均tx事件数量: %d\n"+
-			" - 平均cpu使用率: %d %%\n"+
-			" - 平均内存: %d mb\n",
-			server.clusterId,
-			validCountTmp,
-			totalEvtDiff/5,
-			totalCpuEvtDiff/5,
-			totalTxEvtDiff/5,
-			0,
-			0,
-		)
-	} else {
-		message = fmt.Sprintf("Agent 统计信息：\n"+
-			" - clusterId: %s\n"+
-			" - 正常运行探针个数: %d\n"+
-			" - 每分钟平均事件数量: %d\n"+
-			" - 每分钟平均Cpu事件数量: %d\n"+
-			" - 每分钟平均tx事件数量: %d\n"+
-			" - 平均cpu使用率: %d %%\n"+
-			" - 平均内存: %d mb\n",
-			server.clusterId,
-			validCountTmp,
-			totalEvtDiff/5,
-			totalCpuEvtDiff/5,
-			totalTxEvtDiff/5,
-			totalCpu/uint64(validCountTmp),
-			totalMem/uint64(validCountTmp),
-		)
-	}
-	log.Println("message:", message)
-	// 发送消息
-	sendDingTalkMessage(webhookURL, message)
 }
 
 func (server *AgentMonitorServer) StartStatistic() {
