@@ -22,6 +22,7 @@ on:
 env:
   REGISTRY_HOST: registry.cn-hangzhou.aliyuncs.com
   COLLECTOR_CONTAINER_NAME: apo-collector
+  REGISTRY_USERNAME_ARM: originx
 
 jobs:
   build-images:
@@ -65,7 +66,7 @@ jobs:
         run: |
           echo "IMAGE_TAG_NAME=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
           echo "COLLECTOR_IMAGE_FULL_TAG_AMD64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${{ github.event.inputs.tag }}" >> $GITHUB_ENV
-          echo "COLLECTOR_IMAGE_FULL_TAG_ARM64=${{ env.REGISTRY_HOST }}/${{ secrets.REGISTRY_USERNAME }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${{ github.event.inputs.tag }}-arm64" >> $GITHUB_ENV
+          echo "COLLECTOR_IMAGE_FULL_TAG_ARM64=${{ env.REGISTRY_HOST }}/${{ env.REGISTRY_USERNAME_ARM }}/${{ env.COLLECTOR_CONTAINER_NAME }}:${{ github.event.inputs.tag }}" >> $GITHUB_ENV
 
       - name: Build and push AMD64 image
         if: github.event_name == 'workflow_dispatch'
