@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluste
 
     `group` String,
 
-    `event_id` String DEFAULT toString(id),
+    `event_id` String,
 
     `id` UUID,
 
