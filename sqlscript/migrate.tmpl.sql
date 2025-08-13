@@ -1,3 +1,6 @@
+-- 1.11.0
+ALTER TABLE alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `event_id` String DEFAULT toString(id);
+
 -- 1.9.0
 ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `alert_direction` String;
 ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `analyze_run_id` String;
@@ -6,6 +9,7 @@ ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}}
 -- 1.5.0
 ALTER TABLE workflow_records{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `rounded_time` DateTime64(3);
 
+-- TODO Avoid re-create distributed table every-time collect restart
 {{if .Cluster}}
 drop table workflow_records on CLUSTER {{.Cluster}};
 CREATE TABLE IF NOT EXISTS workflow_records
