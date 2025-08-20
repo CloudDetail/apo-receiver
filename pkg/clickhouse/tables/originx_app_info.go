@@ -15,6 +15,8 @@ const (
 	insertServiceInstanceSQL = `INSERT INTO originx_app_info (
 		timestamp,
 		start_time,
+		heart_time,
+		heart_flag,
 		agent_instance_id,
 		host_pid,
 		container_pid,
@@ -27,71 +29,38 @@ const (
 		?,
 		?,
 		?,
+		?,
+		?,
 		?
 	)`
 
-	queryStoredAppsSQL = `SELECT start_time, host_pid, labels['node_ip'] as node_ip, labels['node_name'] as node_name, labels['cluster_id'] as cluster_id, sum(case when labels['service_name'] != '' then 1 else 0 end) > 0 as related
-		FROM originx_app_info
-		WHERE timestamp >= ?
-		GROUP BY node_ip, node_name, cluster_id, start_time, host_pid
+	queryStoredAppCountSQL = `SELECT count(1) FROM originx_app_info
+		WHERE start_time = %d AND host_pid = %d AND labels['node_ip'] = '%s' AND labels['node_name'] = '%s'
 	`
 
-	queryYesterdayRelatedAppsSQL = `SELECT start_time, agent_instance_id, host_pid, container_pid, container_id, labels
-		FROM originx_app_info
-		WHERE timestamp BETWEEN ? AND ? AND labels['service_name'] != ''
-	`
+	updateHeartTimeSQL = "ALTER TABLE originx_app_info UPDATE heart_time=%d, heart_flag=0 WHERE start_time=%d AND host_pid=%d AND labels['node_ip'] = '%s' AND labels['node_name'] = '%s'"
 
-	queryRelatedAppsSQL = `SELECT start_time, host_pid, container_id,
-		labels['pod_name'] as pod_name,
-		labels['cluster_id'] as cluster_id,
-		labels['source'] as source,
-		labels['service_id'] as service_id,
-		labels['service_name'] as service_name,
-		labels['node_ip'] as node_ip,
-		labels['node_name'] as node_name
+	updateHeartDeadSQL = "ALTER TABLE originx_app_info UPDATE heart_flag=%d WHERE start_time=%d AND host_pid=%d AND labels['node_ip'] = '%s' AND labels['node_name'] = '%s'"
+
+	queryActiveAppsSQL = `SELECT host_pid, start_time
 		FROM originx_app_info
-		WHERE timestamp >= ? AND service_name != ''
-		ORDER BY node_ip, node_name, cluster_id, start_time, host_pid, timestamp desc
+		WHERE heart_flag < 2 AND labels['node_ip'] = '%s' AND labels['node_name'] = '%s'
+		ORDER BY host_pid, start_time
 	`
+)
+
+const (
+	HEART_FLAG_ALIVE = 0
+	HEART_FLAG_MISS  = 1
+	HEART_FLAG_DEAD  = 2
 )
 
 func WriteAppInfos(ctx context.Context, conn *sql.DB, toSends []*appinfo.AppInfo) error {
 	if len(toSends) == 0 {
 		return nil
 	}
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
-	storedApps, err := queryStoredApps(ctx, conn, today)
-	if err != nil {
-		return err
-	}
 
-	newApps := make([]*appinfo.AppInfo, 0)
-	for _, appInfo := range toSends {
-		key := fmt.Sprintf("%s-%s-%s-%d-%d", appInfo.Labels["node_ip"], appInfo.Labels["node_name"], appInfo.Labels["cluster_id"], appInfo.HostPid, appInfo.StartTime)
-		if _, ok := storedApps[key]; !ok {
-			newApps = append(newApps, appInfo)
-		}
-	}
-	if len(newApps) == 0 {
-		return nil
-	}
-
-	relatedApps, err := queryYesterdayRelatedApps(ctx, conn, today)
-	if err != nil {
-		return err
-	}
-
-	newRelateApps := make([]*appinfo.AppInfo, 0)
-	for _, appInfo := range newApps {
-		key := fmt.Sprintf("%s-%s-%s-%d-%d", appInfo.Labels["node_ip"], appInfo.Labels["node_name"], appInfo.Labels["cluster_id"], appInfo.HostPid, appInfo.StartTime)
-		if relateApp, ok := relatedApps[key]; ok {
-			newRelateApps = append(newRelateApps, relateApp)
-		}
-	}
-
-
-	err = doWithTx(ctx, conn, func(tx *sql.Tx) error {
+	return doWithTx(ctx, conn, func(tx *sql.Tx) error {
 		statement, err := tx.PrepareContext(ctx, insertServiceInstanceSQL)
 		if err != nil {
 			return fmt.Errorf("PrepareContext:%w", err)
@@ -99,160 +68,88 @@ func WriteAppInfos(ctx context.Context, conn *sql.DB, toSends []*appinfo.AppInfo
 		defer func() {
 			_ = statement.Close()
 		}()
-		for _, newRelate := range newRelateApps {
-			_, err = statement.ExecContext(ctx,
-				now.UTC(),
-				newRelate.StartTime,
-				newRelate.AgentInstance,
-				newRelate.HostPid,
-				newRelate.ContainerPid,
-				newRelate.ContainerId,
-				newRelate.Labels,
-			)
-			if err != nil {
-				return fmt.Errorf("ExecContext:%w", err)
+
+		now := time.Now()
+		for _, toSend := range toSends {
+			var count int
+			if err := conn.QueryRow(fmt.Sprintf(queryStoredAppCountSQL, toSend.StartTime, toSend.HostPid, toSend.Labels["node_ip"], toSend.Labels["node_name"])).Scan(&count); err != nil {
+				return fmt.Errorf("fail to query app count: s%w", err)
 			}
-			log.Printf("[Store Related App] %v", newRelate)
-		}
-		for _, newApp := range newApps {
-			_, err = statement.ExecContext(ctx,
-				now.UTC(),
-				newApp.StartTime,
-				newApp.AgentInstance,
-				newApp.HostPid,
-				newApp.ContainerPid,
-				newApp.ContainerId,
-				newApp.Labels,
-			)
-			if err != nil {
-				return fmt.Errorf("ExecContext:%w", err)
+			if count == 0 {
+				if _, err = statement.ExecContext(ctx,
+					now.UTC(),
+					toSend.StartTime,
+					now.Unix(), // Second
+					HEART_FLAG_ALIVE,
+					toSend.AgentInstance,
+					toSend.HostPid,
+					toSend.ContainerPid,
+					toSend.ContainerId,
+					toSend.Labels,
+				); err != nil {
+					return fmt.Errorf("ExecContext:%w", err)
+				}
+				log.Printf("[Store New App] %v", toSend)
+			} else {
+				log.Printf("[Ignore Exist App] %v", toSend)
 			}
-			log.Printf("[Store New App] %v", newApp)
 		}
 		return nil
 	})
-	return err
 }
 
-func queryStoredApps(ctx context.Context, conn *sql.DB, startTime int64) (map[string]bool, error) {
-	rows, err := conn.Query(queryStoredAppsSQL, startTime)
+func QueryActiveApps(ctx context.Context, conn *sql.DB, nodeIp string, nodeName string, deadApps []*model.QueryActiveApp) ([]*model.QueryActiveApp, error) {
+	rows, err := conn.Query(fmt.Sprintf(queryActiveAppsSQL, nodeIp, nodeName))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string]bool, 0)
+	deadKeys := map[string]struct{}{}
+	for _, deadApp := range deadApps {
+		deadKeys[fmt.Sprintf("%d-%d", deadApp.Pid, deadApp.StartTime)] = struct{}{}
+	}
+	result := make([]*model.QueryActiveApp, 0)
 	for rows.Next() {
-		groupApp := &GroupApp{}
+		activeApp := &ActiveApp{}
 		if err = rows.Scan(
-			&groupApp.StartTime,
-			&groupApp.HostPid,
-			&groupApp.NodeIp,
-			&groupApp.NodeName,
-			&groupApp.ClusterId,
-			&groupApp.IsRelated); err != nil {
+			&activeApp.HostPid,
+			&activeApp.StartTime); err != nil {
 			return nil, err
 		}
-		key := fmt.Sprintf("%s-%s-%s-%d-%d", groupApp.NodeIp, groupApp.NodeName, groupApp.ClusterId, groupApp.HostPid, groupApp.StartTime)
-		result[key] = groupApp.IsRelated
+		key := fmt.Sprintf("%d-%d", activeApp.HostPid, activeApp.StartTime)
+		if _, exist := deadKeys[key]; !exist {
+			result = append(result, &model.QueryActiveApp{
+				Pid:       activeApp.HostPid,
+				StartTime: activeApp.StartTime,
+			})
+		}
 	}
 	return result, nil
 }
 
-
-func queryYesterdayRelatedApps(ctx context.Context, conn *sql.DB, endTime int64) (map[string]*appinfo.AppInfo, error) {
-	rows, err := conn.Query(queryYesterdayRelatedAppsSQL, endTime - 24 * 3600, endTime)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make(map[string]*appinfo.AppInfo, 0)
-	for rows.Next() {
-		appInfo := &appinfo.AppInfo{}
-		if err = rows.Scan(
-			&appInfo.StartTime,
-			&appInfo.AgentInstance,
-			&appInfo.HostPid,
-			&appInfo.ContainerPid,
-			&appInfo.ContainerId,
-			&appInfo.Labels); err != nil {
-			return nil, err
+func UpdateAppHeartTimes(conn *sql.DB, nodeIp string, nodeName string, activeApps []*model.QueryActiveApp) error {
+	heartTime := time.Now().Unix()
+	log.Printf("[Update App HeartTime] NodeIp: %s, Count: %d", nodeIp, len(activeApps))
+	for _, activeApp := range activeApps {
+		if _, err := conn.Exec(fmt.Sprintf(updateHeartTimeSQL, heartTime, activeApp.StartTime, activeApp.Pid, nodeIp, nodeName)); err != nil {
+			return err
 		}
-		key := fmt.Sprintf("%s-%s-%s-%d-%d", appInfo.Labels["node_ip"], appInfo.Labels["node_name"], appInfo.Labels["cluster_id"], appInfo.HostPid, appInfo.StartTime)
-		result[key] = appInfo
 	}
-	return result, nil
+	return nil
 }
 
-func QueryRelatedAppInfos(ctx context.Context, conn *sql.DB) (map[string][]*model.QueryMonitedAppData, error) {
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
-	rows, err := conn.Query(queryRelatedAppsSQL, today - 24 * 3600)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make(map[string][]*model.QueryMonitedAppData, 0)
-	for rows.Next() {
-		relatedApp := &RelatedApp{}
-		if err = rows.Scan(
-			&relatedApp.StartTime,
-			&relatedApp.HostPid,
-			&relatedApp.ContainerId,
-			&relatedApp.PodName,
-			&relatedApp.ClusterId,
-			&relatedApp.Source,
-			&relatedApp.ServiceId,
-			&relatedApp.ServiceName,
-			&relatedApp.NodeIp,
-			&relatedApp.NodeName); err != nil {
-			return nil, err
+func UpdateAppDeadFlags(conn *sql.DB, nodeIp string, nodeName string, deadApps []*model.QueryActiveApp) error {
+	for _, deadApp := range deadApps {
+		log.Printf("[Update App DeadFlag] NodeIp: %s, Pid: %d", nodeIp, deadApp.Pid)
+		if _, err := conn.Exec(fmt.Sprintf(updateHeartDeadSQL, HEART_FLAG_DEAD, deadApp.StartTime, deadApp.Pid, nodeIp, nodeName)); err != nil {
+			return err
 		}
-		key := fmt.Sprintf("%s-%s-%s", relatedApp.NodeIp, relatedApp.NodeName, relatedApp.ClusterId)
-		value, ok := result[key]
-		if !ok {
-			value = make([]*model.QueryMonitedAppData, 0)
-		} else {
-			last_value := value[len(value) - 1]
-			// Clean Repeated Data
-			if last_value.StartTime == relatedApp.StartTime && last_value.HostPid == relatedApp.HostPid {
-				continue
-			}
-		}
-		value = append(value, &model.QueryMonitedAppData{
-			Source:      relatedApp.Source,
-			ServiceId:   relatedApp.ServiceId,
-			ServiceName: relatedApp.ServiceName,
-			StartTime:   relatedApp.StartTime,
-			HostPid:     relatedApp.HostPid,
-			ContainerId: relatedApp.ContainerId,
-			PodName:     relatedApp.PodName,
-		})
-		result[key] = value
 	}
-	return result, nil
+	return nil
 }
 
-type RelatedApp struct {
-	StartTime   uint64 `db:"start_time"`
-	HostPid     uint32 `db:"host_pid"`
-	ContainerId string `db:"container_id"`
-	PodName     string `db:"pod_name"`
-	ClusterId   string `db:"cluster_id"`
-	Source      string `db:"source"`
-	ServiceId   string `db:"service_id"`
-	ServiceName string `db:"service_name"`
-	NodeIp      string `db:"node_ip"`
-	NodeName    string `db:"node_name"`
-}
-
-type GroupApp struct {
-	StartTime   uint64 `db:"start_time"`
-	HostPid     uint32 `db:"host_pid"`
-	NodeIp      string `db:"node_ip"`
-	NodeName    string `db:"node_name"`
-	ClusterId   string `db:"cluster_id"`
-	IsRelated   bool   `db:"related"`
+type ActiveApp struct {
+	HostPid   uint32 `db:"host_pid"`
+	StartTime uint64 `db:"start_time"`
 }

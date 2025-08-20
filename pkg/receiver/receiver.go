@@ -99,9 +99,6 @@ func Run(ctx context.Context) error {
 	onoffmetric.CacheInstance = onoffmetric.NewMetricCache(prometheusV1Api)
 	onoffmetric.CacheInstance.Start()
 
-	agentmonitor.CacheInstance = agentmonitor.NewMonitedAppCache()
-	agentmonitor.CacheInstance.Start()
-
 	startMetadataFetch(k8sCfg)
 
 	// Start gRPC server

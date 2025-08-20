@@ -1,3 +1,8 @@
+-- 1.11.1
+ALTER TABLE originx_app_info{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} REMOVE TTL;
+ALTER TABLE originx_app_info{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `heart_time` UInt64;
+ALTER TABLE originx_app_info{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `heart_flag` UInt32;
+
 -- 1.11.0
 ALTER TABLE alert_event{{if .Cluster}}_local ON CLUSTER {{.Cluster}}{{end}} ADD COLUMN IF NOT EXISTS `event_id` String DEFAULT toString(id);
 

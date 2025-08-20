@@ -106,14 +106,14 @@ func (analyzer *ReportAnalyzer) StoreEvent(eventJson string) {
 }
 
 func (analyzer *ReportAnalyzer) StoreAppInfo(appInfoJson string) {
-  appInfo := &appinfo.AppInfo{}
-  if err := json.Unmarshal([]byte(appInfoJson), appInfo); err != nil {
-    log.Printf("[x Parse Agent Event] Error: %s", err.Error())
-    return
-  }
-  fillK8sMetadataInApp(appInfo)
+	appInfo := &appinfo.AppInfo{}
+	if err := json.Unmarshal([]byte(appInfoJson), appInfo); err != nil {
+		log.Printf("[x Parse Agent Event] Error: %s", err.Error())
+		return
+	}
+	fillK8sMetadataInApp(appInfo)
 
-  global.CLICK_HOUSE.StoreAppInfo(appInfo)
+	global.CLICK_HOUSE.StoreAppInfo(appInfo)
 }
 
 func (analyzer *ReportAnalyzer) CacheMetric(metricJson string) {

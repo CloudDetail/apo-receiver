@@ -2,6 +2,8 @@ CREATE TABLE IF NOT EXISTS originx_app_info{{if .Cluster}}_local ON CLUSTER {{.C
 (
   timestamp DateTime CODEC(Delta, ZSTD(1)),
   start_time UInt64,
+  heart_time UInt64,
+  heart_flag UInt32,
   agent_instance_id LowCardinality(String) CODEC(ZSTD(1)),
   host_pid UInt32,
   container_pid UInt32,
@@ -10,5 +12,4 @@ CREATE TABLE IF NOT EXISTS originx_app_info{{if .Cluster}}_local ON CLUSTER {{.C
 ) ENGINE {{if .Replication}}ReplicatedMergeTree{{else}}MergeTree(){{end}}
     PARTITION BY toDate(timestamp)
     ORDER BY toUnixTimestamp(timestamp)
-    TTL toDateTime(timestamp) + toIntervalDay({{.TTLDay}})
     SETTINGS index_granularity=8192

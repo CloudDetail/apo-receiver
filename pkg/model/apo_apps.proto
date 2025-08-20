@@ -6,7 +6,8 @@ package kindling;
 
 // The Grpc service definition.
 service AppService {
-    rpc QueryMonitedApps (QueryMonitedAppRequest) returns (QueryMonitedAppResponse) {}
+    rpc QueryMonitedApps (QueryMonitedAppRequest) returns (QueryMonitedAppResponse);
+    rpc QueryActiveApps (QueryActiveAppRequest) returns (QueryActiveAppResponse);
 }
 
 message QueryMonitedAppRequest {
@@ -27,4 +28,20 @@ message QueryMonitedAppData {
 	uint32 hostPid = 5;
     string containerId = 6;
     string podName = 7;
+}
+
+message QueryActiveAppRequest {
+    string nodeIp = 1;
+    string nodeName = 2;
+    repeated QueryActiveApp activeApps = 3;
+    repeated QueryActiveApp deadApps = 4;
+}
+
+message QueryActiveAppResponse {
+	repeated QueryActiveApp datas = 1;
+}
+
+message QueryActiveApp {
+	uint32 pid = 1;
+    uint64 startTime = 2;
 }

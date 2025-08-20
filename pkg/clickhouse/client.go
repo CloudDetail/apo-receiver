@@ -100,8 +100,16 @@ func (client *ClickHouseClient) StoreAppInfo(appInfo *appinfo.AppInfo) {
 	client.cache.cacheAppInfo(appInfo)
 }
 
-func (client *ClickHouseClient) QueryRelatedAppInfos(ctx context.Context) (map[string][]*grpc_model.QueryMonitedAppData, error) {
-	return tables.QueryRelatedAppInfos(ctx, client.Conn)
+func (client *ClickHouseClient) QueryActiveApps(ctx context.Context, nodeIp string, nodeName string, deadApps []*grpc_model.QueryActiveApp) ([]*grpc_model.QueryActiveApp, error) {
+	return tables.QueryActiveApps(ctx, client.Conn, nodeIp, nodeName, deadApps)
+}
+
+func (client *ClickHouseClient) UpdateAppHeartTimes(nodeIp string, nodeName string, activeApps []*grpc_model.QueryActiveApp) error {
+	return tables.UpdateAppHeartTimes(client.Conn, nodeIp, nodeName, activeApps)
+}
+
+func (client *ClickHouseClient) UpdateAppDeadFlags(nodeIp string, nodeName string, deadApps []*grpc_model.QueryActiveApp) error {
+	return tables.UpdateAppDeadFlags(client.Conn, nodeIp, nodeName, deadApps)
 }
 
 func (client *ClickHouseClient) QueryTraces(ctx context.Context, traceId string) (*model.Traces, error) {

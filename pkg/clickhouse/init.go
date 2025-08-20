@@ -196,8 +196,13 @@ func executeMultiStatements(conn *sql.DB, sqlStatements string) error {
 	for _, stmt := range statements {
 		trimmedStmt := strings.TrimSpace(stmt)
 		if trimmedStmt != "" {
+			log.Printf("Execute: %s", trimmedStmt)
 			_, err := conn.ExecContext(context.Background(), trimmedStmt)
 			if err != nil {
+				if strings.Contains(trimmedStmt, "REMOVE TTL") {
+					// Ignore Remove TTL failed.
+					continue
+				}
 				return err
 			}
 		}

@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	AppService_QueryMonitedApps_FullMethodName = "/kindling.AppService/QueryMonitedApps"
+	AppService_QueryActiveApps_FullMethodName  = "/kindling.AppService/QueryActiveApps"
 )
 
 // AppServiceClient is the client API for AppService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AppServiceClient interface {
 	QueryMonitedApps(ctx context.Context, in *QueryMonitedAppRequest, opts ...grpc.CallOption) (*QueryMonitedAppResponse, error)
+	QueryActiveApps(ctx context.Context, in *QueryActiveAppRequest, opts ...grpc.CallOption) (*QueryActiveAppResponse, error)
 }
 
 type appServiceClient struct {
@@ -46,11 +48,21 @@ func (c *appServiceClient) QueryMonitedApps(ctx context.Context, in *QueryMonite
 	return out, nil
 }
 
+func (c *appServiceClient) QueryActiveApps(ctx context.Context, in *QueryActiveAppRequest, opts ...grpc.CallOption) (*QueryActiveAppResponse, error) {
+	out := new(QueryActiveAppResponse)
+	err := c.cc.Invoke(ctx, AppService_QueryActiveApps_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AppServiceServer is the server API for AppService service.
 // All implementations must embed UnimplementedAppServiceServer
 // for forward compatibility
 type AppServiceServer interface {
 	QueryMonitedApps(context.Context, *QueryMonitedAppRequest) (*QueryMonitedAppResponse, error)
+	QueryActiveApps(context.Context, *QueryActiveAppRequest) (*QueryActiveAppResponse, error)
 	mustEmbedUnimplementedAppServiceServer()
 }
 
@@ -60,6 +72,9 @@ type UnimplementedAppServiceServer struct {
 
 func (UnimplementedAppServiceServer) QueryMonitedApps(context.Context, *QueryMonitedAppRequest) (*QueryMonitedAppResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method QueryMonitedApps not implemented")
+}
+func (UnimplementedAppServiceServer) QueryActiveApps(context.Context, *QueryActiveAppRequest) (*QueryActiveAppResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueryActiveApps not implemented")
 }
 func (UnimplementedAppServiceServer) mustEmbedUnimplementedAppServiceServer() {}
 
@@ -92,6 +107,24 @@ func _AppService_QueryMonitedApps_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AppService_QueryActiveApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryActiveAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).QueryActiveApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_QueryActiveApps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).QueryActiveApps(ctx, req.(*QueryActiveAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AppService_ServiceDesc is the grpc.ServiceDesc for AppService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -102,6 +135,10 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QueryMonitedApps",
 			Handler:    _AppService_QueryMonitedApps_Handler,
+		},
+		{
+			MethodName: "QueryActiveApps",
+			Handler:    _AppService_QueryActiveApps_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
