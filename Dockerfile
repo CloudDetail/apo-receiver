@@ -11,6 +11,9 @@ RUN apt-get update && \
     apt-get install -y ca-certificates && \
     # 清理缓存以减小镜像大小
     rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /usr/share/zoneinfo/Asia/Beijing
+
 WORKDIR /app
 COPY receiver-config.yml /app/
 COPY sqlscript /app/sqlscript/
