@@ -122,3 +122,7 @@ type K8sConfig struct {
 
 	MetaServerConfig *metaconfigs.MetaSourceConfig `mapstructure:"meta_server_config"`
 }
+
+type DataplaneConfig struct {
+	Address string `mapstructure:"address"`
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/CloudDetail/apo-receiver/pkg/componment/onoffmetric"
 	"github.com/CloudDetail/apo-receiver/pkg/componment/profile"
 	"github.com/CloudDetail/apo-receiver/pkg/config"
+	"github.com/CloudDetail/apo-receiver/pkg/dataplane"
 	"github.com/CloudDetail/apo-receiver/pkg/global"
 	"github.com/CloudDetail/apo-receiver/pkg/metrics"
 	metricModel "github.com/CloudDetail/apo-receiver/pkg/metrics/model"
@@ -718,7 +719,29 @@ func (analyzer *ReportAnalyzer) checkTask() {
 }
 
 func (analyzer *ReportAnalyzer) queryServices(ctx context.Context, apmType string, traceId string, rootTrace *model.TraceLabels) ([]*apmmodel.OtelServiceNode, error) {
-	serviceNodes, err := global.TRACE_CLIENT.QueryServices(ctx, rootTrace.ClusterID, apmType, traceId, rootTrace)
+	var serviceNodes []*apmmodel.OtelServiceNode
+	var err error
+	if global.DATAPLANE_CLIENT != nil {
+		startTime := (int64(rootTrace.StartTime) - int64(3*time.Second)) / 1e3
+		endTime := (int64(rootTrace.EndTime) + int64(3*time.Second)) / 1e3
+
+		var resp *dataplane.QueryTracesResponse
+		resp, err = global.DATAPLANE_CLIENT.QueryTrace(ctx, &dataplane.QueryTraceSpansRequest{
+			StartTime: startTime,
+			EndTime:   endTime,
+			Filter: dataplane.QueryTraceFilter{
+				TraceId: traceId,
+			},
+			Limit: 1,
+		})
+		if err != nil {
+			return nil, err
+		}
+		serviceNodes, err = dataplane.GetServiceNode(resp)
+	} else {
+		serviceNodes, err = global.TRACE_CLIENT.QueryServices(ctx, rootTrace.ClusterID, apmType, traceId, rootTrace)
+	}
+
 	// Record Metric
 	metrics.UpdateMetric(metricModel.MetricAdapterApmTraceCount, []string{
 		rootTrace.NodeName,

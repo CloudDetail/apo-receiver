@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/CloudDetail/apo-receiver/pkg/componment/agentmonitor"
+	"github.com/CloudDetail/apo-receiver/pkg/dataplane"
 
 	"github.com/CloudDetail/apo-receiver/pkg/componment/ebpffile"
 	"github.com/CloudDetail/apo-receiver/pkg/componment/redis"
@@ -46,9 +47,14 @@ func Run(ctx context.Context) error {
 	// Initialize flags
 	configPath := flag.String("config", "receiver-config.yml", "Configuration file")
 	flag.Parse()
-	receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, err := readInConfig(*configPath)
+	receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, dataplaneCfg, err := readInConfig(*configPath)
 	if err != nil {
 		return fmt.Errorf("fail to read configuration: %w", err)
+	}
+
+	if dataplaneCfg != nil && len(dataplaneCfg.Address) > 0 {
+		dpClient := dataplane.NewClient(dataplaneCfg.Address)
+		global.DATAPLANE_CLIENT = dpClient
 	}
 
 	if redisCfg.Enable {
@@ -136,12 +142,12 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func readInConfig(path string) (*config.ReceiverConfig, *config.SampleConfig, *config.ProfileConfig, *config.PrometheusConfig, *config.ClickHouseConfig, *config.AnalyzerConfig, *config.RedisConfig, *config.K8sConfig, error) {
+func readInConfig(path string) (*config.ReceiverConfig, *config.SampleConfig, *config.ProfileConfig, *config.PrometheusConfig, *config.ClickHouseConfig, *config.AnalyzerConfig, *config.RedisConfig, *config.K8sConfig, *config.DataplaneConfig, error) {
 	viper := viper.New()
 	viper.SetConfigFile(path)
 	err := viper.ReadInConfig()
 	if err != nil { // Handle errors reading the config file
-		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("error happened while reading config file: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("error happened while reading config file: %w", err)
 	}
 	receiverCfg := &config.ReceiverConfig{}
 	_ = viper.UnmarshalKey("receiver", receiverCfg)
@@ -167,7 +173,10 @@ func readInConfig(path string) (*config.ReceiverConfig, *config.SampleConfig, *c
 	k8sCfg := &config.K8sConfig{}
 	_ = viper.UnmarshalKey("k8s", k8sCfg)
 
-	return receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, nil
+	dataplaneCfg := &config.DataplaneConfig{}
+	_ = viper.UnmarshalKey("dataplane", dataplaneCfg)
+
+	return receiverCfg, sampleCfg, profileCfg, prometheusCfg, clickHouseCfg, analyzerCfg, redisCfg, k8sCfg, dataplaneCfg, nil
 }
 
 func startGrpcServer(
